@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Tourmaline",
+  "description": "Markdown editor and visual canvas preview for Chrome.",
+  "version": "0.1.0",
+  "permissions": ["storage"],
+  "action": {
+    "default_title": "Open Tourmaline"
+  },
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["file:///*.md", "file:///*.markdown"],
+      "css": ["app.css"],
+      "js": ["content-bootstrap.js", "app.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
