@@ -100,6 +100,28 @@ button { cursor: pointer; }
 }
 
 .workspace { flex: 1; min-height: 0; display: flex; }
+.workspace.layer-collapsed .layer-panel {
+  width: 0 !important;
+  min-width: 0;
+  border-right: 0;
+}
+.workspace.layer-collapsed .layer-panel > :not(.layer-panel-header) { display: none; }
+.workspace.layer-collapsed .layer-panel-header {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  z-index: 8;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+}
+.workspace.layer-collapsed .layer-eyebrow,
+.workspace.layer-collapsed #layers-expand,
+.workspace.layer-collapsed #fit-view { display: none; }
 .layer-panel {
   width: 240px;
   min-width: 180px;
@@ -120,6 +142,7 @@ button { cursor: pointer; }
   padding: 0 12px;
   border-bottom: 1px solid var(--border);
 }
+.layer-header-actions { display: flex; align-items: center; gap: 4px; }
 .layer-eyebrow, .editor-header span:first-child {
   font-size: 11px;
   font-weight: 750;
@@ -168,6 +191,9 @@ button { cursor: pointer; }
   color: #2a6e6a;
   box-shadow: inset 0 0 0 1px rgba(93, 188, 180, 0.45);
 }
+.layer-row.dragging { opacity: 0.55; }
+.layer-row.drop-before { box-shadow: inset 0 2px 0 var(--seafoam); }
+.layer-row.drop-after { box-shadow: inset 0 -2px 0 var(--seafoam); }
 .layer-row.drillable .layer-label { color: var(--text); font-weight: 650; }
 .layer-toggle, .layer-glyph { width: 16px; height: 16px; flex-shrink: 0; display: grid; place-items: center; color: var(--text-faint); }
 .layer-glyph svg, .layer-toggle svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2; }
@@ -214,16 +240,29 @@ button { cursor: pointer; }
   position: relative;
   overflow: hidden;
   background-color: var(--canvas);
-  background-image: radial-gradient(circle, #d4cdd0 1px, transparent 1px);
-  background-size: 20px 20px;
+  --grid-dot: rgba(116, 104, 108, 0.32);
 }
-.stage-scroll { position: absolute; inset: 0; overflow: auto; cursor: grab; }
+.grid-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.stage-scroll { position: absolute; inset: 0; z-index: 1; overflow: auto; cursor: default; }
+.stage-scroll.space-panning { cursor: grab; }
 .stage-scroll.panning { cursor: grabbing; }
+.stage-size {
+  position: absolute;
+  width: 14000px;
+  height: 9000px;
+}
 .stage {
-  position: relative;
-  width: 3200px;
-  height: 2200px;
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 14000px;
+  height: 9000px;
   transform-origin: top left;
+  overflow: visible;
 }
 .card {
   position: absolute;
@@ -274,6 +313,18 @@ button { cursor: pointer; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.selectable-embed {
+  cursor: pointer;
+  outline: 1px solid transparent;
+  outline-offset: 3px;
+}
+.selectable-embed:hover {
+  outline-color: rgba(93, 188, 180, 0.45);
+}
+.selectable-embed.selected {
+  outline-color: var(--seafoam);
+  box-shadow: 0 0 0 3px var(--seafoam-muted);
+}
 .card-resize-handle {
   position: absolute;
   right: -6px;
@@ -281,7 +332,13 @@ button { cursor: pointer; }
   bottom: 0;
   width: 12px;
   cursor: ew-resize;
+  opacity: 0;
+  transition: opacity 130ms;
 }
+.card:hover .card-resize-handle,
+.card.selected .card-resize-handle,
+.orphan:hover .card-resize-handle,
+.orphan.selected .card-resize-handle { opacity: 1; }
 .card-resize-handle::after {
   content: "";
   position: absolute;
@@ -296,7 +353,7 @@ button { cursor: pointer; }
 }
 .orphan {
   position: absolute;
-  width: 300px;
+  width: 380px;
   padding: 4px 2px;
   cursor: grab;
   color: #7a6a6e;

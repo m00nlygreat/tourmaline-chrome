@@ -38,8 +38,14 @@
         <div class="layer-panel-header">
           <span class="layer-eyebrow">LAYERS</span>
           <div class="layer-header-actions">
+            <button class="icon-btn" id="layers-expand" title="Expand all layers" aria-label="Expand all layers">
+              <svg viewBox="0 0 16 16"><path d="M4 5l4 4 4-4M4 10l4 4 4-4"/></svg>
+            </button>
             <button class="icon-btn" id="fit-view" title="Fit view" aria-label="Fit view">
               <svg viewBox="0 0 16 16"><path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3"/></svg>
+            </button>
+            <button class="icon-btn" id="layer-collapse" title="Collapse layer panel" aria-label="Collapse layer panel">
+              <svg viewBox="0 0 16 16"><path d="M5 3v10M11 5L8 8l3 3"/></svg>
             </button>
           </div>
         </div>
@@ -60,8 +66,11 @@
       </section>
 
       <section class="canvas-area" id="canvas-area">
+        <canvas class="grid-layer" id="grid-layer" aria-hidden="true"></canvas>
         <div class="stage-scroll" id="stage-scroll">
-          <div class="stage" id="stage"></div>
+          <div class="stage-size" id="stage-size">
+            <div class="stage" id="stage"></div>
+          </div>
         </div>
       </section>
     </main>
