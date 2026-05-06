@@ -698,7 +698,17 @@ function parseMarkdown(markdown) {
     if (!scopeHeadings.length) {
       const content = allLines.slice(startLine, endLine + 1).join("\n").trim();
       if (content) items.push(createItem(`orphan:${scopeId}:body`, "orphan", title, startLine, endLine, content, 1));
-      scopes[scopeId] = { id: scopeId, title, startLine, endLine, headingLevel: openingHeading?.level ?? 0, items, tree: [] };
+      scopes[scopeId] = {
+        id: scopeId,
+        title,
+        startLine,
+        endLine,
+        depth: null,
+        headingLevel: openingHeading?.level ?? 0,
+        canvasHeadingLevel: clamp((openingHeading?.level ?? 0) + 1, 1, 6),
+        items,
+        tree: []
+      };
       scopes[scopeId].tree = buildLayerTreeForItems(items, scopes);
       return scopes[scopeId];
     }
@@ -725,7 +735,9 @@ function parseMarkdown(markdown) {
       title: title === "Document" ? shellHeadings[0]?.title ?? title : title,
       startLine,
       endLine,
+      depth: minLevel,
       headingLevel: openingHeading?.level ?? 0,
+      canvasHeadingLevel: clamp(minLevel, 1, 6),
       items,
       tree: []
     };
@@ -1091,7 +1103,8 @@ async function renderCanvas() {
 }
 
 async function renderMarkdownHtml(markdown, item) {
-  return markdownIt.render(await replaceEmbeds(markdown, item));
+  const html = markdownIt.render(await replaceEmbeds(markdown, item));
+  return normalizeRenderedHeadingDepth(html, item);
 }
 
 async function replaceEmbeds(markdown, item) {
@@ -1233,7 +1246,8 @@ function setCardEditorsEditable() {
 
 function updateItemMarkdownFromEditor(editor, item, options = {}) {
   const html = typeof editor.getHTML === "function" ? editor.getHTML() : editor.innerHTML;
-  const nextMarkdown = turndown.turndown(html).trim();
+  const relativeMarkdown = turndown.turndown(html).trim();
+  const nextMarkdown = denormalizeMarkdownHeadingDepth(relativeMarkdown, item);
   replaceItemMarkdown(item, nextMarkdown, options);
 }
 
@@ -1253,6 +1267,49 @@ function replaceItemMarkdown(item, replacement, options = {}) {
   if (options.reparse) {
     reparseAndRender();
   }
+}
+
+function normalizeRenderedHeadingDepth(html, item) {
+  const offset = getHeadingDepthOffset(item);
+  if (!offset) return html;
+  return html.replace(/<\/?h([1-6])(\s[^>]*)?>/gi, (tag, levelText) => {
+    const relativeLevel = clamp(Number(levelText) - offset, 1, 6);
+    return tag.replace(/h[1-6]/i, `h${relativeLevel}`);
+  });
+}
+
+function denormalizeMarkdownHeadingDepth(markdown, item) {
+  const offset = getHeadingDepthOffset(item);
+  if (!offset) return markdown;
+  let fenceMarker = null;
+  return markdown.split(/\r?\n/).map((line) => {
+    const fence = /^(\s*)(`{3,}|~{3,})/.exec(line);
+    if (fence) {
+      const marker = fence[2][0];
+      if (!fenceMarker) fenceMarker = marker;
+      else if (marker === fenceMarker) fenceMarker = null;
+      return line;
+    }
+    return fenceMarker ? line : shiftMarkdownHeadingLine(line, offset);
+  }).join("\n");
+}
+
+function shiftMarkdownHeadingLine(line, offset) {
+  return line.replace(/^(#{1,6})(\s+)/, (_match, hashes, spacing) => {
+    const sourceLevel = clamp(hashes.length + offset, 1, 6);
+    return `${"#".repeat(sourceLevel)}${spacing}`;
+  });
+}
+
+function getHeadingDepthOffset(item) {
+  if (!item || item.kind === "embed") return 0;
+  const baselineLevel = Number.isFinite(item.level) ? item.level : getCurrentCanvasHeadingBaseline();
+  return clamp(baselineLevel, 1, 6) - 1;
+}
+
+function getCurrentCanvasHeadingBaseline() {
+  const scope = state.parsed?.scopes?.[state.currentScopeId];
+  return scope?.depth ?? scope?.canvasHeadingLevel ?? 1;
 }
 
 function focusCardEditor(itemId) {
@@ -1531,11 +1588,8 @@ function replaceLineRange(startLine, endLine, replacement) {
 
 function getNewHeadingLevelForCurrentCanvas() {
   const scope = state.parsed?.scopes?.[state.currentScopeId];
-  const sectionLevels = (scope?.items ?? state.parsed?.items ?? [])
-    .filter((item) => item.kind === "section")
-    .map((item) => item.level);
-  if (sectionLevels.length) return clamp(Math.min(...sectionLevels), 1, 6);
-  return clamp((scope?.headingLevel ?? 0) + 1, 1, 6);
+  if (scope?.canvasHeadingLevel) return clamp(scope.canvasHeadingLevel, 1, 6);
+  return getCurrentCanvasHeadingBaseline();
 }
 
 function createHeadingAtViewportPoint(clientX, clientY) {
