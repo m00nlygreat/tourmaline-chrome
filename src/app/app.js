@@ -1,3 +1,9 @@
+import { Editor, Node, mergeAttributes } from "@tiptap/core";
+import StarterKit from "@tiptap/starter-kit";
+import Image from "@tiptap/extension-image";
+import MarkdownIt from "markdown-it";
+import TurndownService from "turndown";
+
 const STAGE_WIDTH = 14000;
 const STAGE_HEIGHT = 9000;
 const DEFAULT_CARD_WIDTH = 380;
@@ -38,6 +44,78 @@ The Chrome version turns each canvas card into an editable writing surface.
 Drag cards, resize them from the right edge, select rows in the layer panel, and pan or zoom the canvas.
 `;
 
+const MarkdownImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      class: { default: null },
+      "data-item-id": { default: null },
+      "data-embed-id": { default: null },
+      "data-owner-id": { default: null },
+      "data-line": { default: null },
+      "data-markdown": { default: null }
+    };
+  }
+});
+
+const EmbedPill = Node.create({
+  name: "embedPill",
+  group: "block",
+  atom: true,
+  selectable: true,
+  addAttributes() {
+    return {
+      class: { default: "embed-pill selectable-embed" },
+      "data-item-id": { default: null },
+      "data-embed-id": { default: null },
+      "data-owner-id": { default: null },
+      "data-line": { default: null },
+      "data-markdown": { default: null },
+      label: { default: "File embed" }
+    };
+  },
+  parseHTML() {
+    return [{ tag: "div.embed-pill" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    const label = HTMLAttributes.label || "File embed";
+    const attrs = { ...HTMLAttributes };
+    delete attrs.label;
+    return ["div", mergeAttributes(attrs), label];
+  }
+});
+
+const editorExtensions = [
+  StarterKit.configure({
+    heading: { levels: [1, 2, 3, 4, 5, 6] },
+    link: {
+      openOnClick: false,
+      autolink: true,
+      defaultProtocol: "https"
+    },
+    trailingNode: false
+  }),
+  MarkdownImage,
+  EmbedPill
+];
+
+const markdownIt = new MarkdownIt({
+  html: true,
+  linkify: true,
+  breaks: false
+});
+
+const turndown = new TurndownService({
+  codeBlockStyle: "fenced",
+  headingStyle: "atx",
+  bulletListMarker: "-"
+});
+
+turndown.addRule("preserveEmbeds", {
+  filter: (node) => node instanceof HTMLElement && node.hasAttribute("data-markdown"),
+  replacement: (_content, node) => node.getAttribute("data-markdown") || ""
+});
+
 const state = {
   markdown: SAMPLE_MARKDOWN,
   fileHandle: null,
@@ -46,6 +124,7 @@ const state = {
   documentKey: "sample:untitled",
   parsed: null,
   selectedId: null,
+  editingItemId: null,
   currentScopeId: "scope:root",
   scopeStack: ["scope:root"],
   zoom: 1,
@@ -59,6 +138,7 @@ const state = {
   gridFrame: null,
   itemStates: {},
   localImageUrls: new Map(),
+  cardEditors: new Map(),
   saveTimer: null
 };
 
@@ -277,18 +357,30 @@ function scheduleDocumentSave() {
 
 async function reparseAndRender() {
   const previousItems = state.parsed?.items ?? [];
-  const previousFrames = new Map(previousItems.map((item) => [`${item.startLine}:${item.endLine}`, state.itemStates[item.id]]));
+  const previousFrames = previousItems
+    .map((item) => ({ item, frame: state.itemStates[item.id] }))
+    .filter((entry) => entry.frame);
   const previousSelectedItem = previousItems.find((item) => item.id === state.selectedId);
+  const previousEditingItem = previousItems.find((item) => item.id === state.editingItemId);
+  const previousScopeTitlePath = getCurrentScopeTitlePath();
   state.parsed = parseMarkdown(state.markdown);
-  migrateItemStatesByLineRange(previousFrames);
+  restoreScopeFromTitlePath(previousScopeTitlePath);
+  migrateItemStates(previousFrames);
   const previousSelection = state.selectedId;
   if (previousSelectedItem && !findRenderableById(previousSelection)) {
-    const nextSelectedItem = state.parsed.items.find((item) => item.startLine === previousSelectedItem.startLine && item.endLine === previousSelectedItem.endLine);
+    const nextSelectedItem = findMatchingItem(previousSelectedItem);
     if (nextSelectedItem) state.selectedId = nextSelectedItem.id;
+  }
+  if (previousEditingItem && !findRenderableById(state.editingItemId)) {
+    const nextEditingItem = findMatchingItem(previousEditingItem);
+    if (nextEditingItem) state.editingItemId = nextEditingItem.id;
   }
   ensureItemStates();
   if (!findRenderableById(state.selectedId)) {
     state.selectedId = state.parsed.items[0]?.id ?? null;
+  }
+  if (!findRenderableById(state.editingItemId)) {
+    state.editingItemId = null;
   }
   renderShell();
   await renderCanvas();
@@ -297,13 +389,57 @@ async function reparseAndRender() {
   }
 }
 
-function migrateItemStatesByLineRange(previousFrames) {
-  if (!previousFrames.size) return;
+function migrateItemStates(previousFrames) {
+  if (!previousFrames.length) return;
+  const usedFrames = new Set();
   state.parsed.items.forEach((item) => {
     if (state.itemStates[item.id]) return;
-    const frame = previousFrames.get(`${item.startLine}:${item.endLine}`);
-    if (frame) state.itemStates[item.id] = frame;
+    const availableFrames = previousFrames.filter((entry) => !usedFrames.has(entry));
+    const match = availableFrames.find((entry) => entry.item.startLine === item.startLine && entry.item.endLine === item.endLine)
+      ?? availableFrames.find((entry) => entry.item.startLine === item.startLine && entry.item.kind === item.kind && entry.item.level === item.level)
+      ?? findNearestPreviousItemFrame(availableFrames, item);
+    if (match?.frame) state.itemStates[item.id] = { ...match.frame };
+    if (match) usedFrames.add(match);
   });
+}
+
+function findNearestPreviousItemFrame(previousFrames, item) {
+  const candidates = previousFrames.filter((entry) => entry.item.kind === item.kind && entry.item.level === item.level && entry.item.title === item.title);
+  if (!candidates.length) return null;
+  return candidates.reduce((closest, entry) => {
+    const distance = Math.abs(entry.item.startLine - item.startLine);
+    const closestDistance = Math.abs(closest.item.startLine - item.startLine);
+    return distance < closestDistance ? entry : closest;
+  });
+}
+
+function findMatchingItem(previousItem) {
+  return state.parsed.items.find((item) => item.startLine === previousItem.startLine && item.endLine === previousItem.endLine)
+    ?? state.parsed.items.find((item) => item.startLine === previousItem.startLine && item.kind === previousItem.kind && item.level === previousItem.level)
+    ?? findNearestPreviousItemFrame(state.parsed.items.map((item) => ({ item })), previousItem)?.item
+    ?? null;
+}
+
+function getCurrentScopeTitlePath() {
+  if (!state.parsed?.scopes) return [];
+  return state.scopeStack.map((scopeId) => state.parsed.scopes[scopeId]?.title).filter(Boolean);
+}
+
+function restoreScopeFromTitlePath(titlePath) {
+  if (!titlePath.length || !state.parsed?.scopes) return;
+  const nextStack = ["scope:root"];
+  let currentScope = state.parsed.scopes["scope:root"];
+  for (const title of titlePath.slice(1)) {
+    const nextItem = currentScope?.items.find((item) => item.childScopeId && item.title === title);
+    const nextScope = nextItem ? state.parsed.scopes[nextItem.childScopeId] : null;
+    if (!nextScope) break;
+    nextStack.push(nextScope.id);
+    currentScope = nextScope;
+  }
+  const nextScopeId = nextStack[nextStack.length - 1];
+  state.currentScopeId = nextScopeId;
+  state.scopeStack = nextStack;
+  syncCurrentScope();
 }
 
 function parseMarkdown(markdown) {
@@ -682,11 +818,12 @@ function updateLayerPanelButtons() {
 }
 
 async function renderCanvas() {
+  destroyCardEditors();
   clearLocalImageUrls();
   els.stage.replaceChildren();
   for (const item of state.parsed.items) {
     const el = document.createElement("article");
-    el.className = `${item.kind === "orphan" ? "orphan" : "card"} ${item.id === state.selectedId ? "selected" : ""}`;
+    el.className = `${item.kind === "orphan" ? "orphan" : "card"} ${item.id === state.selectedId ? "selected" : ""} ${item.id === state.editingItemId ? "editing" : ""}`;
     el.dataset.itemId = item.id;
     if (item.childScopeId) el.dataset.childScopeId = item.childScopeId;
     applyFrame(el, state.itemStates[item.id]);
@@ -694,13 +831,8 @@ async function renderCanvas() {
     body.className = item.kind === "orphan" ? "orphan-body" : "card-body";
     const editor = document.createElement("div");
     editor.className = "editable-card-body";
-    editor.contentEditable = "true";
-    editor.spellcheck = true;
     editor.dataset.itemId = item.id;
     editor.setAttribute("aria-label", `Edit ${item.title}`);
-    const content = await renderMarkdownFragment(item.content, item);
-    editor.append(...content.childNodes);
-    bindCardEditor(editor, item);
     if (item.kind === "orphan") {
       body.append(span("orphan-label", item.title), editor);
     } else {
@@ -719,54 +851,20 @@ async function renderCanvas() {
       selectItem(item.id);
     });
     el.addEventListener("dblclick", (event) => {
-      if (isInteractiveTarget(event.target)) return;
       event.preventDefault();
       event.stopPropagation();
-      focusEditorLine(item.startLine);
+      enterEditMode(item.id, event);
     });
     els.stage.append(el);
+    const content = await renderMarkdownHtml(item.content, item);
+    createCardEditor(editor, item, content);
   }
+  setCardEditorsEditable();
   decorateEmbeds();
 }
 
-async function renderMarkdownFragment(markdown, item) {
-  const container = document.createElement("div");
-  const withoutEmbeds = await replaceEmbeds(markdown, item);
-  const blocks = withoutEmbeds.split(/\n{2,}/);
-  for (const block of blocks) {
-    const trimmed = block.trim();
-    if (!trimmed) continue;
-    if (trimmed.startsWith("<div class=\"embed-pill\"") || trimmed.startsWith("<img ")) {
-      container.insertAdjacentHTML("beforeend", trimmed);
-    } else if (/^#{1,6}\s+/.test(trimmed)) {
-      const match = /^(#{1,6})\s+(.+)$/.exec(trimmed);
-      const heading = document.createElement(`h${Math.min(4, match[1].length)}`);
-      heading.dataset.markdownLevel = String(match[1].length);
-      heading.textContent = match[2].replace(/\s+#*$/, "");
-      container.append(heading);
-    } else if (/^[-*+]\s+/m.test(trimmed)) {
-      const ul = document.createElement("ul");
-      trimmed.split(/\r?\n/).filter(Boolean).forEach((line) => {
-        const li = document.createElement("li");
-        li.innerHTML = inlineMarkdown(escapeHtml(line.replace(/^[-*+]\s+/, "")));
-        ul.append(li);
-      });
-      container.append(ul);
-    } else if (/^>\s+/m.test(trimmed)) {
-      const quote = document.createElement("blockquote");
-      quote.innerHTML = inlineMarkdown(escapeHtml(trimmed.replace(/^>\s?/gm, "")));
-      container.append(quote);
-    } else if (/^```/.test(trimmed)) {
-      const pre = document.createElement("pre");
-      pre.textContent = trimmed.replace(/^```[^\n]*\n?/, "").replace(/\n?```$/, "");
-      container.append(pre);
-    } else {
-      const p = document.createElement("p");
-      p.innerHTML = inlineMarkdown(escapeHtml(trimmed));
-      container.append(p);
-    }
-  }
-  return container;
+async function renderMarkdownHtml(markdown, item) {
+  return markdownIt.render(await replaceEmbeds(markdown, item));
 }
 
 async function replaceEmbeds(markdown, item) {
@@ -786,7 +884,7 @@ async function renderEmbedHtml(embed) {
     if (src) return `<img class="${className}" ${attrs} src="${escapeAttribute(src)}" alt="${escapeAttribute(embed.label)}" draggable="false">`;
     return `<div class="embed-pill ${className}" ${attrs}>Image unavailable: ${escapeHtml(embed.target)}</div>`;
   }
-  return `<div class="embed-pill ${className}" ${attrs}>File embed: ${escapeHtml(embed.target)}</div>`;
+  return `<div class="embed-pill ${className}" ${attrs} label="${escapeAttribute(`File embed: ${embed.target}`)}">File embed: ${escapeHtml(embed.target)}</div>`;
 }
 
 async function resolveImageSource(target) {
@@ -810,11 +908,13 @@ function decorateEmbeds() {
   els.stage.querySelectorAll(".selectable-embed").forEach((element) => {
     element.addEventListener("pointerdown", (event) => {
       if (state.isSpacePressed || event.button !== 0) return;
+      if (!isEditingItem(element.dataset.ownerId)) return;
       event.preventDefault();
       event.stopPropagation();
       selectItem(element.dataset.embedId || element.dataset.itemId);
     }, true);
     element.addEventListener("click", (event) => {
+      if (!isEditingItem(element.dataset.ownerId)) return;
       event.stopPropagation();
       if (event.ctrlKey || event.metaKey) {
         event.preventDefault();
@@ -824,8 +924,7 @@ function decorateEmbeds() {
     element.addEventListener("dblclick", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      const line = Number(element.dataset.line || 0);
-      focusEditorLine(line);
+      enterEditMode(element.dataset.ownerId, event);
     }, true);
   });
   els.stage.querySelectorAll("img").forEach((image) => {
@@ -833,31 +932,81 @@ function decorateEmbeds() {
   });
 }
 
-function bindCardEditor(editor, item) {
-  editor.addEventListener("pointerdown", (event) => {
-    event.stopPropagation();
-    selectItem(item.id);
+function createCardEditor(element, item, content) {
+  const editor = new Editor({
+    element,
+    extensions: editorExtensions,
+    content,
+    editable: item.id === state.editingItemId,
+    editorProps: {
+      attributes: {
+        "aria-label": `Edit ${item.title}`,
+        spellcheck: "true"
+      },
+      handleDOMEvents: {
+        pointerdown: (_view, event) => {
+          if (state.editingItemId !== item.id) return false;
+          event.stopPropagation();
+          selectItem(item.id);
+          return false;
+        },
+        click: (_view, event) => {
+          if (state.editingItemId !== item.id) return false;
+          event.stopPropagation();
+          selectItem(item.id);
+          return false;
+        }
+      }
+    },
+    onUpdate: ({ editor: currentEditor }) => {
+      updateItemMarkdownFromEditor(currentEditor, item, { reparse: false });
+    },
+    onBlur: ({ editor: currentEditor }) => {
+      updateItemMarkdownFromEditor(currentEditor, item, { reparse: false });
+    }
   });
-  editor.addEventListener("click", (event) => {
-    event.stopPropagation();
-    selectItem(item.id);
-  });
-  editor.addEventListener("input", () => {
-    updateItemMarkdownFromEditor(editor, item, { reparse: false });
-  });
-  editor.addEventListener("blur", () => {
-    updateItemMarkdownFromEditor(editor, item, { reparse: true });
-  });
-  editor.addEventListener("paste", (event) => {
-    const text = event.clipboardData?.getData("text/plain");
-    if (!text) return;
-    event.preventDefault();
-    document.execCommand("insertText", false, text);
-  });
+  state.cardEditors.set(item.id, editor);
+}
+
+function destroyCardEditors() {
+  for (const editor of state.cardEditors.values()) {
+    editor.destroy();
+  }
+  state.cardEditors.clear();
+}
+
+function enterEditMode(itemId, event = null) {
+  const editor = state.cardEditors.get(itemId);
+  if (!editor) return;
+  state.editingItemId = itemId;
+  setCardEditorsEditable();
+  selectItem(itemId);
+  focusEditorAtEvent(editor, event);
+  updateCanvasSelection();
+}
+
+function exitEditMode(options = {}) {
+  if (!state.editingItemId) return;
+  const itemId = state.editingItemId;
+  const editor = state.cardEditors.get(itemId);
+  const item = state.parsed?.items.find((candidate) => candidate.id === itemId);
+  state.editingItemId = null;
+  if (editor && item) {
+    updateItemMarkdownFromEditor(editor, item, { reparse: options.reparse ?? true });
+  }
+  setCardEditorsEditable();
+  updateCanvasSelection();
+}
+
+function setCardEditorsEditable() {
+  for (const [itemId, editor] of state.cardEditors) {
+    editor.setEditable(itemId === state.editingItemId, false);
+  }
 }
 
 function updateItemMarkdownFromEditor(editor, item, options = {}) {
-  const nextMarkdown = serializeEditableMarkdown(editor, item).trim();
+  const html = typeof editor.getHTML === "function" ? editor.getHTML() : editor.innerHTML;
+  const nextMarkdown = turndown.turndown(html).trim();
   replaceItemMarkdown(item, nextMarkdown, options);
 }
 
@@ -879,84 +1028,26 @@ function replaceItemMarkdown(item, replacement, options = {}) {
   }
 }
 
-function serializeEditableMarkdown(editor, item) {
-  const blocks = [];
-  editor.childNodes.forEach((node) => {
-    const markdown = serializeBlock(node, item);
-    if (markdown) blocks.push(markdown);
-  });
-  return blocks.join("\n\n");
-}
-
-function serializeBlock(node, item) {
-  if (node.nodeType === Node.TEXT_NODE) return node.textContent.trim();
-  if (!(node instanceof HTMLElement)) return "";
-  if (node.matches("[data-markdown]")) return node.dataset.markdown;
-  if (node.matches("h1, h2, h3, h4, h5, h6")) {
-    const level = clamp(Number(node.dataset.markdownLevel || item.level || 1), 1, 6);
-    return `${"#".repeat(level)} ${node.textContent.trim()}`;
-  }
-  if (node.matches("ul, ol")) {
-    return [...node.children]
-      .filter((child) => child.matches("li"))
-      .map((child, index) => node.matches("ol") ? `${index + 1}. ${serializeInlineMarkdown(child)}` : `- ${serializeInlineMarkdown(child)}`)
-      .join("\n");
-  }
-  if (node.matches("blockquote")) {
-    return serializeInlineMarkdown(node).split(/\r?\n/).map((line) => `> ${line}`).join("\n");
-  }
-  if (node.matches("pre")) {
-    return `\`\`\`\n${node.textContent.replace(/\n$/, "")}\n\`\`\``;
-  }
-  if (node.matches("img")) {
-    return node.dataset.markdown || `![${node.alt || ""}](${node.getAttribute("src") || ""})`;
-  }
-  if (node.matches(".embed-pill")) {
-    return node.dataset.markdown || node.textContent.trim();
-  }
-  if (node.matches("div") && [...node.children].some((child) => child.matches("div, p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, img, .embed-pill"))) {
-    return [...node.childNodes].map((child) => serializeBlock(child, item)).filter(Boolean).join("\n\n");
-  }
-  return serializeInlineMarkdown(node);
-}
-
-function serializeInlineMarkdown(node) {
-  let output = "";
-  node.childNodes.forEach((child) => {
-    if (child.nodeType === Node.TEXT_NODE) {
-      output += child.textContent;
-      return;
-    }
-    if (!(child instanceof HTMLElement)) return;
-    if (child.matches("[data-markdown]")) {
-      output += child.dataset.markdown;
-    } else if (child.matches("strong, b")) {
-      output += `**${serializeInlineMarkdown(child)}**`;
-    } else if (child.matches("em, i")) {
-      output += `*${serializeInlineMarkdown(child)}*`;
-    } else if (child.matches("code")) {
-      output += `\`${child.textContent}\``;
-    } else if (child.matches("a")) {
-      output += `[${serializeInlineMarkdown(child)}](${child.getAttribute("href") || ""})`;
-    } else if (child.matches("br")) {
-      output += "\n";
-    } else {
-      output += serializeInlineMarkdown(child);
-    }
-  });
-  return output.trim();
-}
-
 function focusCardEditor(itemId) {
-  const editor = els.stage.querySelector(`.editable-card-body[data-item-id="${cssEscape(itemId)}"]`);
-  if (!(editor instanceof HTMLElement)) return;
-  editor.focus();
-  const range = document.createRange();
-  range.selectNodeContents(editor);
-  range.collapse(false);
-  const selection = window.getSelection();
-  selection.removeAllRanges();
-  selection.addRange(range);
+  const editor = state.cardEditors.get(itemId);
+  if (!editor) return;
+  focusEditorAtEvent(editor);
+}
+
+function focusEditorAtEvent(editor, event = null) {
+  editor.commands.focus();
+  if (!event) {
+    editor.commands.focus("end");
+    return;
+  }
+  requestAnimationFrame(() => {
+    const position = editor.view.posAtCoords({ left: event.clientX, top: event.clientY });
+    if (position?.pos) {
+      editor.chain().focus().setTextSelection(position.pos).run();
+    } else {
+      editor.commands.focus("end");
+    }
+  });
 }
 
 function findRenderableById(id) {
@@ -1002,6 +1093,10 @@ function clearSelection() {
   updateCanvasSelection();
 }
 
+function isEditingItem(id) {
+  return Boolean(id) && state.editingItemId === id;
+}
+
 async function enterScope(scopeId, stackIndex = null) {
   if (!state.parsed?.scopes?.[scopeId]) return;
   state.currentScopeId = scopeId;
@@ -1030,10 +1125,12 @@ function syncCurrentScope() {
 
 function bindCardDrag(element, id) {
   element.addEventListener("pointerdown", (event) => {
+    if (!isEditingItem(id) && startCanvasPan(event)) return;
     if (state.isSpacePressed || event.button !== 0) return;
     if (event.target.closest(".card-resize-handle")) return;
-    if (isInteractiveTarget(event.target)) return;
+    if (isEditingItem(id) && isInteractiveTarget(event.target)) return;
     event.preventDefault();
+    exitEditMode({ reparse: false });
     selectItem(id);
     const start = { clientX: event.clientX, clientY: event.clientY, ...state.itemStates[id] };
     const move = (moveEvent) => {
@@ -1081,24 +1178,9 @@ function createResizeHandle(id) {
 function bindCanvasPan() {
   els.stageScroll.addEventListener("pointerdown", (event) => {
     if (event.target !== els.stageScroll && event.target !== els.stageSize && event.target !== els.stage) return;
+    exitEditMode();
     clearSelection();
-    const shouldPan = (state.isSpacePressed && event.button === 0) || event.button === 1;
-    if (!shouldPan) return;
-    event.preventDefault();
-    const start = { x: event.clientX, y: event.clientY, left: els.stageScroll.scrollLeft, top: els.stageScroll.scrollTop };
-    els.stageScroll.classList.add("panning");
-    const move = (moveEvent) => {
-      els.stageScroll.scrollLeft = start.left - (moveEvent.clientX - start.x);
-      els.stageScroll.scrollTop = start.top - (moveEvent.clientY - start.y);
-    };
-    const up = () => {
-      els.stageScroll.classList.remove("panning");
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      saveLayout();
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
+    startCanvasPan(event);
   });
   els.stageScroll.addEventListener("auxclick", (event) => {
     if (event.button === 1) event.preventDefault();
@@ -1110,14 +1192,42 @@ function bindCanvasPan() {
     createHeadingAtViewportPoint(event.clientX, event.clientY);
   });
   els.stageScroll.addEventListener("wheel", (event) => {
+    if (!event.ctrlKey) return;
     event.preventDefault();
     const zoomDelta = event.deltaY < 0 ? 1.1 : 1 / 1.1;
     setZoom(state.zoom * zoomDelta, { clientX: event.clientX, clientY: event.clientY });
   }, { passive: false });
 }
 
+function startCanvasPan(event) {
+  const shouldPan = (state.isSpacePressed && event.button === 0) || event.button === 1;
+  if (!shouldPan) return false;
+  event.preventDefault();
+  event.stopPropagation();
+  const start = { x: event.clientX, y: event.clientY, left: els.stageScroll.scrollLeft, top: els.stageScroll.scrollTop };
+  els.stageScroll.classList.add("panning");
+  const move = (moveEvent) => {
+    els.stageScroll.scrollLeft = start.left - (moveEvent.clientX - start.x);
+    els.stageScroll.scrollTop = start.top - (moveEvent.clientY - start.y);
+  };
+  const up = () => {
+    els.stageScroll.classList.remove("panning");
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+    saveLayout();
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+  return true;
+}
+
 function bindKeyboardShortcuts() {
   window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && state.editingItemId) {
+      event.preventDefault();
+      exitEditMode();
+      return;
+    }
     if (event.code === "Space" && !isTypingTarget(event.target)) {
       event.preventDefault();
       state.isSpacePressed = true;
@@ -1314,6 +1424,7 @@ function updateStageScale() {
 function updateCanvasSelection() {
   els.stage.querySelectorAll("[data-item-id]").forEach((node) => {
     node.classList.toggle("selected", node.dataset.itemId === state.selectedId);
+    node.classList.toggle("editing", node.dataset.itemId === state.editingItemId);
   });
   els.stage.querySelectorAll("[data-embed-id]").forEach((node) => {
     node.classList.toggle("selected", node.dataset.embedId === state.selectedId);
@@ -1360,12 +1471,8 @@ function applyFrame(element, frame) {
   element.style.left = `${STAGE_WIDTH / 2 + frame.x}px`;
   element.style.top = `${STAGE_HEIGHT / 2 + frame.y}px`;
   element.style.width = `${frame.width}px`;
-  if (element.classList.contains("orphan")) {
-    element.style.height = "auto";
-    element.style.minHeight = "0";
-  } else {
-    element.style.minHeight = `${frame.height}px`;
-  }
+  element.style.height = "auto";
+  element.style.minHeight = "0";
 }
 
 function getMinZoom() {
@@ -1556,15 +1663,6 @@ function isImageTarget(target) {
   const clean = target.split("#")[0].split("?")[0];
   const ext = clean.includes(".") ? clean.split(".").pop().toLowerCase() : "";
   return IMAGE_EXTENSIONS.has(ext) || /^(https?:|data:)/i.test(target);
-}
-
-function inlineMarkdown(html) {
-  return html
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*([^*]+)\*/g, "<em>$1</em>")
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
-    .replace(/\n/g, "<br>");
 }
 
 function escapeHtml(value) {

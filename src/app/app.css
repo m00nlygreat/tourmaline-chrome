@@ -236,7 +236,6 @@ button { cursor: pointer; }
 .card {
   position: absolute;
   width: 310px;
-  min-height: 120px;
   border: 1.5px solid #e4dde0;
   border-radius: 8px;
   background: #fff;
@@ -247,17 +246,26 @@ button { cursor: pointer; }
 }
 .card:hover { border-color: var(--seafoam-light); box-shadow: 0 0 0 3px var(--seafoam-muted), 0 6px 28px rgba(0, 0, 0, 0.08); }
 .card.selected { border-color: var(--seafoam); box-shadow: 0 0 0 3px var(--seafoam-muted), 0 6px 28px rgba(0, 0, 0, 0.1); }
+.card.editing,
+.card.editing:hover,
+.card.editing.selected {
+  border-color: #e4dde0;
+  box-shadow: 0 2px 10px rgba(180, 120, 130, 0.08), 0 6px 28px rgba(0, 0, 0, 0.06);
+}
 .card::before { content: ""; display: block; height: 3px; background: linear-gradient(90deg, var(--rose-light), var(--seafoam-light)); }
 .card-body { padding: 14px 16px 16px; overflow-wrap: anywhere; }
 .editable-card-body {
-  min-height: 48px;
-  cursor: text;
+  cursor: grab;
   outline: 0;
 }
-.editable-card-body:focus {
-  border-radius: 6px;
-  box-shadow: 0 0 0 3px var(--seafoam-muted);
+.editing .editable-card-body { cursor: text; }
+.editable-card-body .ProseMirror {
+  outline: 0;
 }
+.editable-card-body .ProseMirror > :last-child {
+  margin-bottom: 0;
+}
+.editable-card-body:focus-within { outline: 0; }
 .card h1, .card h2, .card h3, .card h4 { margin: 0 0 8px; color: var(--text); line-height: 1.25; }
 .card h1 { font-size: 15px; }
 .card h2 { font-size: 14px; }
@@ -339,6 +347,7 @@ button { cursor: pointer; }
   line-height: 1.7;
 }
 .orphan.selected { outline: 2px solid rgba(93, 188, 180, 0.45); outline-offset: 5px; border-radius: 8px; }
+.orphan.editing.selected { outline: 0; }
 .orphan-label {
   margin-bottom: 6px;
   color: var(--rose);
