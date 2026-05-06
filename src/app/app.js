@@ -17,7 +17,7 @@ Tourmaline turns a Markdown document into movable cards on a browser canvas.
 
 ## Background
 
-The Chrome version keeps the editor and canvas preview together. Edits in this source pane are reflected immediately in the visual workspace.
+The Chrome version turns each canvas card into an editable writing surface.
 
 ![Remote sample](https://picsum.photos/seed/tourmaline/480/240)
 
@@ -65,7 +65,6 @@ const state = {
 const els = {
   workspace: document.querySelector(".workspace"),
   canvasArea: document.querySelector("#canvas-area"),
-  editor: document.querySelector("#markdown-editor"),
   gridLayer: document.querySelector("#grid-layer"),
   stage: document.querySelector("#stage"),
   stageSize: document.querySelector("#stage-size"),
@@ -76,7 +75,6 @@ const els = {
   breadcrumbs: document.querySelector("#breadcrumbs"),
   scopeTitle: document.querySelector("#scope-title"),
   scopeMeta: document.querySelector("#scope-meta"),
-  editorMeta: document.querySelector("#editor-meta"),
   fileLabel: document.querySelector("#file-label"),
   itemCount: document.querySelector("#item-count"),
   statusText: document.querySelector("#status-text"),
@@ -125,7 +123,6 @@ const db = {
 init();
 
 async function init() {
-  els.editor.value = state.markdown;
   bindEvents();
   const loadedFromContentScript = loadMarkdownFromContentScript();
   const loadedFromUrl = loadedFromContentScript ? false : await loadMarkdownFromUrlParam();
@@ -150,11 +147,6 @@ function bindEvents() {
   document.querySelector("#fit-view").addEventListener("click", fitView);
   els.layersExpand.addEventListener("click", toggleExpandAllLayers);
   els.layerCollapse.addEventListener("click", toggleLayerPanel);
-  els.editor.addEventListener("input", () => {
-    state.markdown = els.editor.value;
-    scheduleDocumentSave();
-    reparseAndRender();
-  });
   bindCanvasPan();
   bindLayerResize();
   bindKeyboardShortcuts();
@@ -170,7 +162,6 @@ async function loadPersistedSample() {
   const saved = await db.get("documents", state.documentKey);
   if (saved?.markdown) {
     state.markdown = saved.markdown;
-    els.editor.value = saved.markdown;
   }
 }
 
@@ -183,7 +174,6 @@ function loadMarkdownFromContentScript() {
   state.markdown = file.markdown || "";
   state.documentKey = `url:${file.fileUrl}`;
   state.hasInitialFit = false;
-  els.editor.value = state.markdown;
   setStatus(`Opened ${file.fileUrl}`);
   return true;
 }
@@ -210,7 +200,6 @@ async function loadMarkdownFromUrlParam() {
     state.markdown = await response.text();
     state.documentKey = `url:${url.href}`;
     state.hasInitialFit = false;
-    els.editor.value = state.markdown;
     setStatus(`Opened ${url.href}`);
     return true;
   } catch (error) {
@@ -238,7 +227,6 @@ async function loadFromFileHandle(handle) {
   state.markdown = await file.text();
   state.documentKey = getDocumentIdentity(file);
   state.hasInitialFit = false;
-  els.editor.value = state.markdown;
   await loadLayout();
   await reparseAndRender();
   setStatus(`Opened ${file.name}`);
@@ -288,10 +276,18 @@ function scheduleDocumentSave() {
 }
 
 async function reparseAndRender() {
+  const previousItems = state.parsed?.items ?? [];
+  const previousFrames = new Map(previousItems.map((item) => [`${item.startLine}:${item.endLine}`, state.itemStates[item.id]]));
+  const previousSelectedItem = previousItems.find((item) => item.id === state.selectedId);
   state.parsed = parseMarkdown(state.markdown);
+  migrateItemStatesByLineRange(previousFrames);
   const previousSelection = state.selectedId;
+  if (previousSelectedItem && !findRenderableById(previousSelection)) {
+    const nextSelectedItem = state.parsed.items.find((item) => item.startLine === previousSelectedItem.startLine && item.endLine === previousSelectedItem.endLine);
+    if (nextSelectedItem) state.selectedId = nextSelectedItem.id;
+  }
   ensureItemStates();
-  if (!findRenderableById(previousSelection)) {
+  if (!findRenderableById(state.selectedId)) {
     state.selectedId = state.parsed.items[0]?.id ?? null;
   }
   renderShell();
@@ -299,6 +295,15 @@ async function reparseAndRender() {
   if (!state.hasInitialFit) {
     requestAnimationFrame(fitInitialViewport);
   }
+}
+
+function migrateItemStatesByLineRange(previousFrames) {
+  if (!previousFrames.size) return;
+  state.parsed.items.forEach((item) => {
+    if (state.itemStates[item.id]) return;
+    const frame = previousFrames.get(`${item.startLine}:${item.endLine}`);
+    if (frame) state.itemStates[item.id] = frame;
+  });
 }
 
 function parseMarkdown(markdown) {
@@ -490,7 +495,6 @@ function ensureItemStates() {
 function renderShell() {
   els.scopeTitle.textContent = state.parsed.title;
   els.scopeMeta.textContent = `${state.parsed.items.length} items`;
-  els.editorMeta.textContent = `${state.markdown.split(/\r?\n/).length} lines`;
   els.fileLabel.textContent = state.fileName;
   els.itemCount.textContent = `${state.parsed.items.length} items`;
   renderBreadcrumbs();
@@ -688,10 +692,19 @@ async function renderCanvas() {
     applyFrame(el, state.itemStates[item.id]);
     const body = document.createElement("div");
     body.className = item.kind === "orphan" ? "orphan-body" : "card-body";
+    const editor = document.createElement("div");
+    editor.className = "editable-card-body";
+    editor.contentEditable = "true";
+    editor.spellcheck = true;
+    editor.dataset.itemId = item.id;
+    editor.setAttribute("aria-label", `Edit ${item.title}`);
+    const content = await renderMarkdownFragment(item.content, item);
+    editor.append(...content.childNodes);
+    bindCardEditor(editor, item);
     if (item.kind === "orphan") {
-      body.append(span("orphan-label", item.title), await renderMarkdownFragment(item.content, item));
+      body.append(span("orphan-label", item.title), editor);
     } else {
-      body.append(await renderMarkdownFragment(item.content, item));
+      body.append(editor);
     }
     el.append(createResizeHandle(item.id));
     el.append(body);
@@ -728,6 +741,7 @@ async function renderMarkdownFragment(markdown, item) {
     } else if (/^#{1,6}\s+/.test(trimmed)) {
       const match = /^(#{1,6})\s+(.+)$/.exec(trimmed);
       const heading = document.createElement(`h${Math.min(4, match[1].length)}`);
+      heading.dataset.markdownLevel = String(match[1].length);
       heading.textContent = match[2].replace(/\s+#*$/, "");
       container.append(heading);
     } else if (/^[-*+]\s+/m.test(trimmed)) {
@@ -766,7 +780,7 @@ async function replaceEmbeds(markdown, item) {
 
 async function renderEmbedHtml(embed) {
   const className = `selectable-embed${embed.id === state.selectedId ? " selected" : ""}`;
-  const attrs = `data-item-id="${escapeAttribute(embed.id)}" data-embed-id="${escapeAttribute(embed.id)}" data-owner-id="${escapeAttribute(embed.ownerId)}" data-line="${embed.line}"`;
+  const attrs = `data-item-id="${escapeAttribute(embed.id)}" data-embed-id="${escapeAttribute(embed.id)}" data-owner-id="${escapeAttribute(embed.ownerId)}" data-line="${embed.line}" data-markdown="${escapeAttribute(embed.original)}"`;
   if (embed.isImage) {
     const src = await resolveImageSource(embed.target);
     if (src) return `<img class="${className}" ${attrs} src="${escapeAttribute(src)}" alt="${escapeAttribute(embed.label)}" draggable="false">`;
@@ -817,6 +831,132 @@ function decorateEmbeds() {
   els.stage.querySelectorAll("img").forEach((image) => {
     image.draggable = false;
   });
+}
+
+function bindCardEditor(editor, item) {
+  editor.addEventListener("pointerdown", (event) => {
+    event.stopPropagation();
+    selectItem(item.id);
+  });
+  editor.addEventListener("click", (event) => {
+    event.stopPropagation();
+    selectItem(item.id);
+  });
+  editor.addEventListener("input", () => {
+    updateItemMarkdownFromEditor(editor, item, { reparse: false });
+  });
+  editor.addEventListener("blur", () => {
+    updateItemMarkdownFromEditor(editor, item, { reparse: true });
+  });
+  editor.addEventListener("paste", (event) => {
+    const text = event.clipboardData?.getData("text/plain");
+    if (!text) return;
+    event.preventDefault();
+    document.execCommand("insertText", false, text);
+  });
+}
+
+function updateItemMarkdownFromEditor(editor, item, options = {}) {
+  const nextMarkdown = serializeEditableMarkdown(editor, item).trim();
+  replaceItemMarkdown(item, nextMarkdown, options);
+}
+
+function replaceItemMarkdown(item, replacement, options = {}) {
+  const lines = state.markdown.split(/\r?\n/);
+  const replacementLines = replacement ? replacement.split(/\r?\n/) : [];
+  const nextLines = [
+    ...lines.slice(0, item.startLine),
+    ...replacementLines,
+    ...lines.slice(item.endLine + 1)
+  ];
+  state.markdown = nextLines.join("\n").replace(/\n{4,}/g, "\n\n\n").trimStart();
+  item.content = replacement;
+  item.endLine = item.startLine + Math.max(0, replacementLines.length - 1);
+  scheduleDocumentSave();
+  state.hasInitialFit = true;
+  if (options.reparse) {
+    reparseAndRender();
+  }
+}
+
+function serializeEditableMarkdown(editor, item) {
+  const blocks = [];
+  editor.childNodes.forEach((node) => {
+    const markdown = serializeBlock(node, item);
+    if (markdown) blocks.push(markdown);
+  });
+  return blocks.join("\n\n");
+}
+
+function serializeBlock(node, item) {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent.trim();
+  if (!(node instanceof HTMLElement)) return "";
+  if (node.matches("[data-markdown]")) return node.dataset.markdown;
+  if (node.matches("h1, h2, h3, h4, h5, h6")) {
+    const level = clamp(Number(node.dataset.markdownLevel || item.level || 1), 1, 6);
+    return `${"#".repeat(level)} ${node.textContent.trim()}`;
+  }
+  if (node.matches("ul, ol")) {
+    return [...node.children]
+      .filter((child) => child.matches("li"))
+      .map((child, index) => node.matches("ol") ? `${index + 1}. ${serializeInlineMarkdown(child)}` : `- ${serializeInlineMarkdown(child)}`)
+      .join("\n");
+  }
+  if (node.matches("blockquote")) {
+    return serializeInlineMarkdown(node).split(/\r?\n/).map((line) => `> ${line}`).join("\n");
+  }
+  if (node.matches("pre")) {
+    return `\`\`\`\n${node.textContent.replace(/\n$/, "")}\n\`\`\``;
+  }
+  if (node.matches("img")) {
+    return node.dataset.markdown || `![${node.alt || ""}](${node.getAttribute("src") || ""})`;
+  }
+  if (node.matches(".embed-pill")) {
+    return node.dataset.markdown || node.textContent.trim();
+  }
+  if (node.matches("div") && [...node.children].some((child) => child.matches("div, p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, img, .embed-pill"))) {
+    return [...node.childNodes].map((child) => serializeBlock(child, item)).filter(Boolean).join("\n\n");
+  }
+  return serializeInlineMarkdown(node);
+}
+
+function serializeInlineMarkdown(node) {
+  let output = "";
+  node.childNodes.forEach((child) => {
+    if (child.nodeType === Node.TEXT_NODE) {
+      output += child.textContent;
+      return;
+    }
+    if (!(child instanceof HTMLElement)) return;
+    if (child.matches("[data-markdown]")) {
+      output += child.dataset.markdown;
+    } else if (child.matches("strong, b")) {
+      output += `**${serializeInlineMarkdown(child)}**`;
+    } else if (child.matches("em, i")) {
+      output += `*${serializeInlineMarkdown(child)}*`;
+    } else if (child.matches("code")) {
+      output += `\`${child.textContent}\``;
+    } else if (child.matches("a")) {
+      output += `[${serializeInlineMarkdown(child)}](${child.getAttribute("href") || ""})`;
+    } else if (child.matches("br")) {
+      output += "\n";
+    } else {
+      output += serializeInlineMarkdown(child);
+    }
+  });
+  return output.trim();
+}
+
+function focusCardEditor(itemId) {
+  const editor = els.stage.querySelector(`.editable-card-body[data-item-id="${cssEscape(itemId)}"]`);
+  if (!(editor instanceof HTMLElement)) return;
+  editor.focus();
+  const range = document.createRange();
+  range.selectNodeContents(editor);
+  range.collapse(false);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
 }
 
 function findRenderableById(id) {
@@ -1032,7 +1172,6 @@ function moveMarkdownBlock(draggedId, targetId, position) {
   if (dragged.startLine < targetIndex) targetIndex -= block.length;
   remaining.splice(targetIndex, 0, ...block);
   state.markdown = remaining.join("\n").replace(/\n{4,}/g, "\n\n\n");
-  els.editor.value = state.markdown;
   scheduleDocumentSave();
   state.selectedId = draggedId;
   state.hasInitialFit = true;
@@ -1048,7 +1187,6 @@ function replaceLineRange(startLine, endLine, replacement) {
     ...lines.slice(endLine + 1)
   ];
   state.markdown = nextLines.join("\n").replace(/\n{4,}/g, "\n\n\n").trimStart();
-  els.editor.value = state.markdown;
   scheduleDocumentSave();
   state.hasInitialFit = true;
   reparseAndRender();
@@ -1075,7 +1213,6 @@ function createHeadingAtViewportPoint(clientX, clientY) {
   const insertion = ["", `${"#".repeat(level)} ${title}`, ""];
   lines.splice(insertAt, 0, ...insertion);
   state.markdown = lines.join("\n").replace(/\n{4,}/g, "\n\n\n");
-  els.editor.value = state.markdown;
   scheduleDocumentSave();
   state.hasInitialFit = true;
   reparseAndRender().then(() => {
@@ -1094,17 +1231,10 @@ function createHeadingAtViewportPoint(clientX, clientY) {
 }
 
 function focusEditorLine(line) {
-  const lines = state.markdown.split(/\r?\n/);
-  const safeLine = clamp(line, 0, Math.max(0, lines.length - 1));
-  let start = 0;
-  for (let index = 0; index < safeLine; index += 1) {
-    start += lines[index].length + 1;
-  }
-  const end = start + lines[safeLine].length;
-  els.editor.focus();
-  els.editor.setSelectionRange(start, end);
-  const lineHeight = 20;
-  els.editor.scrollTop = Math.max(0, safeLine * lineHeight - els.editor.clientHeight / 2);
+  const item = state.parsed?.items.find((candidate) => line >= candidate.startLine && line <= candidate.endLine);
+  if (!item) return;
+  selectItem(item.id, { revealOnCanvas: true });
+  requestAnimationFrame(() => focusCardEditor(item.id));
 }
 
 function bindLayerResize() {
@@ -1496,7 +1626,7 @@ function isTypingTarget(target) {
 }
 
 function isInteractiveTarget(target) {
-  return target instanceof Element && Boolean(target.closest("a, button, input, textarea, select, summary, .selectable-embed"));
+  return target instanceof Element && Boolean(target.closest("a, button, input, textarea, select, summary, [contenteditable='true'], .selectable-embed"));
 }
 
 function embedSvg() {

@@ -67,14 +67,6 @@
           <div class="layer-resize-handle" id="layer-resize"></div>
         </aside>
 
-        <section class="editor-panel">
-          <div class="editor-header">
-            <span>MARKDOWN</span>
-            <span id="editor-meta">file</span>
-          </div>
-          <textarea id="markdown-editor" spellcheck="false"></textarea>
-        </section>
-
         <section class="canvas-area" id="canvas-area">
           <canvas class="grid-layer" id="grid-layer" aria-hidden="true"></canvas>
           <div class="stage-scroll" id="stage-scroll">
