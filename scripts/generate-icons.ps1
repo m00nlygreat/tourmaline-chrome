@@ -26,8 +26,8 @@ foreach ($size in 16, 32, 48, 128) {
   $backgroundPath.CloseFigure()
   $backgroundBrush = [System.Drawing.Drawing2D.LinearGradientBrush]::new(
     $rect,
-    [System.Drawing.Color]::FromArgb(255, 251, 247, 239),
-    [System.Drawing.Color]::FromArgb(255, 239, 226, 210),
+    [System.Drawing.Color]::FromArgb(255, 253, 249, 250),
+    [System.Drawing.Color]::FromArgb(255, 168, 221, 217),
     45
   )
   $graphics.FillPath($backgroundBrush, $backgroundPath)
@@ -43,15 +43,15 @@ foreach ($size in 16, 32, 48, 128) {
   $gemRect = [System.Drawing.RectangleF]::new(24 * $scale, 16 * $scale, 80 * $scale, 96 * $scale)
   $gemBrush = [System.Drawing.Drawing2D.LinearGradientBrush]::new(
     $gemRect,
-    [System.Drawing.Color]::FromArgb(255, 72, 229, 194),
-    [System.Drawing.Color]::FromArgb(255, 21, 95, 122),
+    [System.Drawing.Color]::FromArgb(255, 240, 208, 212),
+    [System.Drawing.Color]::FromArgb(255, 93, 188, 180),
     60
   )
   $graphics.FillPolygon($gemBrush, $gemPoints)
 
-  $topBrush = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(190, 127, 240, 216))
-  $leftBrush = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(200, 19, 125, 120))
-  $rightBrush = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(210, 20, 79, 115))
+  $topBrush = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(210, 240, 208, 212))
+  $leftBrush = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(215, 212, 144, 154))
+  $rightBrush = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(230, 93, 188, 180))
   $graphics.FillPolygon($topBrush, [System.Drawing.PointF[]] @(
     (New-Point 64 16 $scale),
     (New-Point 104 39.5 $scale),
@@ -73,7 +73,7 @@ foreach ($size in 16, 32, 48, 128) {
 
   if ($size -ge 32) {
     $facetPen = [System.Drawing.Pen]::new(
-      [System.Drawing.Color]::FromArgb(86, 239, 255, 249),
+      [System.Drawing.Color]::FromArgb(92, 255, 255, 255),
       [Math]::Max(1.4, 5 * $scale)
     )
     $facetPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round

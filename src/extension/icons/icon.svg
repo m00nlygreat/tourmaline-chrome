@@ -1,20 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Tourmaline">
   <defs>
     <linearGradient id="bg" x1="18" y1="14" x2="110" y2="118" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#fbf7ef"/>
-      <stop offset="1" stop-color="#efe2d2"/>
+      <stop offset="0" stop-color="#fdf9fa"/>
+      <stop offset=".58" stop-color="#f0d0d4"/>
+      <stop offset="1" stop-color="#a8ddd9"/>
     </linearGradient>
     <linearGradient id="gem" x1="30" y1="20" x2="100" y2="110" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#48e5c2"/>
-      <stop offset="0.48" stop-color="#1ca68f"/>
-      <stop offset="1" stop-color="#155f7a"/>
+      <stop offset="0" stop-color="#f0d0d4"/>
+      <stop offset=".45" stop-color="#d4909a"/>
+      <stop offset="1" stop-color="#5dbcb4"/>
     </linearGradient>
   </defs>
   <rect x="8" y="8" width="112" height="112" rx="25" fill="url(#bg)"/>
   <path d="M64 16 104 39.5v49L64 112 24 88.5v-49L64 16Z" fill="url(#gem)"/>
-  <path d="M64 16 104 39.5 64 56 24 39.5 64 16Z" fill="#7ff0d8" opacity=".78"/>
-  <path d="M24 39.5 64 56 64 112 24 88.5V39.5Z" fill="#137d78" opacity=".78"/>
-  <path d="M104 39.5 64 56 64 112 104 88.5V39.5Z" fill="#144f73" opacity=".82"/>
-  <path d="M64 16v40M24 39.5 64 112 104 39.5M24 88.5 64 56 104 88.5" fill="none" stroke="#effff9" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity=".34"/>
+  <path d="M64 16 104 39.5 64 56 24 39.5 64 16Z" fill="#f0d0d4" opacity=".82"/>
+  <path d="M24 39.5 64 56 64 112 24 88.5V39.5Z" fill="#d4909a" opacity=".84"/>
+  <path d="M104 39.5 64 56 64 112 104 88.5V39.5Z" fill="#5dbcb4" opacity=".9"/>
+  <path d="M64 16v40M24 39.5 64 112 104 39.5M24 88.5 64 56 104 88.5" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity=".36"/>
   <path d="M41 38 64 27 87 38 64 47 41 38Z" fill="#ffffff" opacity=".38"/>
 </svg>
