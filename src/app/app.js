@@ -206,10 +206,12 @@ const els = {
 const db = {
   open() {
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open("tourmaline-chrome", 1);
+      const request = indexedDB.open("tourmaline-chrome", 2);
       request.onupgradeneeded = () => {
-        request.result.createObjectStore("layouts");
-        request.result.createObjectStore("documents");
+        const stores = request.result.objectStoreNames;
+        if (!stores.contains("layouts")) request.result.createObjectStore("layouts");
+        if (!stores.contains("documents")) request.result.createObjectStore("documents");
+        if (!stores.contains("handles")) request.result.createObjectStore("handles");
       };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
@@ -248,6 +250,7 @@ async function init() {
   if (!loadedFromContentScript && !loadedFromUrl) {
     await loadPersistedSample();
   }
+  await loadPersistedHandles();
   await loadLayout();
   await reparseAndRender();
   requestAnimationFrame(() => {
@@ -348,6 +351,7 @@ async function loadFromFileHandle(handle) {
   state.markdown = await file.text();
   state.documentKey = getDocumentIdentity(file);
   state.hasInitialFit = false;
+  await persistHandles();
   await loadLayout();
   await reparseAndRender();
   setStatus(`Opened ${file.name}`);
@@ -359,6 +363,7 @@ async function openFolder() {
     return;
   }
   state.directoryHandle = await window.showDirectoryPicker();
+  await persistHandles();
   clearLocalImageUrls();
   await reparseAndRender();
   setStatus("Folder linked for relative image embeds.");
@@ -371,6 +376,7 @@ async function saveMarkdownFile() {
       if (state.directoryHandle) {
         const handle = await state.directoryHandle.getFileHandle(state.fileName || "Untitled.md", { create: true });
         state.fileHandle = handle;
+        await persistHandles();
         if (await writeMarkdownToFileHandle(handle)) setStatus(`Saved ${state.fileName} in linked folder.`);
         return;
       }
@@ -379,7 +385,8 @@ async function saveMarkdownFile() {
       if (handle) {
         state.fileHandle = handle;
         state.fileName = handle.name || state.fileName;
-        state.documentKey = getDocumentIdentity({ name: state.fileName });
+        if (shouldRetargetDocumentIdentity()) state.documentKey = getDocumentIdentity({ name: state.fileName });
+        await persistHandles();
         renderShell();
         await saveLayout();
         if (await writeMarkdownToFileHandle(handle)) setStatus(`Saved ${state.fileName}`);
@@ -437,6 +444,38 @@ function getPickerStartIn() {
   return state.directoryHandle || "documents";
 }
 
+async function loadPersistedHandles() {
+  try {
+    const saved = await db.get("handles", state.documentKey);
+    if (!saved) return;
+    if (saved.fileHandle) {
+      state.fileHandle = saved.fileHandle;
+      state.fileName = saved.fileName || saved.fileHandle.name || state.fileName;
+    }
+    if (saved.directoryHandle) state.directoryHandle = saved.directoryHandle;
+  } catch (error) {
+    setStatus(`Could not restore file access: ${error.message}`);
+  }
+}
+
+async function persistHandles() {
+  try {
+    if (!state.fileHandle && !state.directoryHandle) return;
+    await db.set("handles", state.documentKey, {
+      fileHandle: state.fileHandle,
+      directoryHandle: state.directoryHandle,
+      fileName: state.fileName,
+      updatedAt: Date.now()
+    });
+  } catch (error) {
+    setStatus(`Could not remember file access: ${error.message}`);
+  }
+}
+
+function shouldRetargetDocumentIdentity() {
+  return state.documentKey.startsWith("sample:") || state.documentKey.startsWith("doc:");
+}
+
 async function ensureWritable(handle) {
   const options = { mode: "readwrite" };
   if ((await handle.queryPermission(options)) === "granted") return true;
@@ -485,6 +524,7 @@ async function persistDocumentChange() {
     if (state.directoryHandle) {
       const handle = await state.directoryHandle.getFileHandle(state.fileName || "Untitled.md", { create: true });
       state.fileHandle = handle;
+      await persistHandles();
       if (await writeMarkdownToFileHandle(handle)) setStatus(`Auto-saved ${state.fileName} in linked folder.`);
       return;
     }
