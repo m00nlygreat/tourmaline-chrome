@@ -1,6 +1,7 @@
 import { Editor, Node, mergeAttributes } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
+import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import MarkdownIt from "markdown-it";
 import TurndownService from "turndown";
 
@@ -96,6 +97,12 @@ const editorExtensions = [
     trailingNode: false
   }),
   MarkdownImage,
+  Table.configure({
+    resizable: false
+  }),
+  TableRow,
+  TableHeader,
+  TableCell,
   EmbedPill
 ];
 
@@ -115,6 +122,34 @@ turndown.addRule("preserveEmbeds", {
   filter: (node) => node instanceof HTMLElement && node.hasAttribute("data-markdown"),
   replacement: (_content, node) => node.getAttribute("data-markdown") || ""
 });
+
+turndown.addRule("markdownTables", {
+  filter: "table",
+  replacement: (_content, node) => tableToMarkdown(node)
+});
+
+function tableToMarkdown(table) {
+  const rows = [...table.querySelectorAll("tr")].map((row) =>
+    [...row.children]
+      .filter((cell) => cell.matches("th, td"))
+      .map((cell) => normalizeTableCell(cell.textContent || ""))
+  );
+  if (!rows.length) return "";
+
+  const columnCount = Math.max(...rows.map((row) => row.length));
+  const normalizedRows = rows.map((row) => [
+    ...row,
+    ...Array(Math.max(0, columnCount - row.length)).fill("")
+  ]);
+  const [head, ...body] = normalizedRows;
+  const separator = Array(columnCount).fill("---");
+  const markdownRows = [head, separator, ...body].map((row) => `| ${row.join(" | ")} |`);
+  return `\n\n${markdownRows.join("\n")}\n\n`;
+}
+
+function normalizeTableCell(value) {
+  return value.replace(/\s+/g, " ").replace(/\\/g, "\\\\").replace(/\|/g, "\\|").trim();
+}
 
 const state = {
   markdown: SAMPLE_MARKDOWN,

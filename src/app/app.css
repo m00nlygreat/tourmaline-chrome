@@ -271,11 +271,31 @@ button { cursor: pointer; }
 .card h2 { font-size: 14px; }
 .card h3, .card h4 { font-size: 13px; }
 .card p, .card li, .card blockquote { font-size: 12px; color: #6a5a5e; line-height: 1.65; }
-.card p, .card ul, .card ol, .card blockquote, .card pre { margin: 0 0 8px; }
+.card p, .card ul, .card ol, .card blockquote, .card pre, .card table { margin: 0 0 8px; }
 .card ul, .card ol { padding-left: 18px; }
 .card blockquote { border-left: 3px solid var(--rose-light); padding-left: 10px; }
 .card code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; background: #f6eff1; border-radius: 4px; padding: 1px 4px; }
 .card pre { background: #f8f3f4; padding: 8px; border-radius: 6px; overflow: auto; }
+.card table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  color: #6a5a5e;
+  table-layout: fixed;
+}
+.card th,
+.card td {
+  border: 1px solid var(--border);
+  padding: 5px 7px;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.card th {
+  background: #f8f3f4;
+  color: var(--text);
+  font-weight: 750;
+}
 .card img {
   display: block;
   max-width: 100%;
