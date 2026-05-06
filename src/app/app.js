@@ -18,6 +18,7 @@ const GRID_SPACING = 28;
 const GRID_DOT_RADIUS = 0.9;
 const MIN_GRID_SCREEN_SPACING = 14;
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp"]);
+const MARKDOWN_PICKER_ID = "tourmaline-markdown-file";
 const SAMPLE_MARKDOWN = `# Tourmaline Chrome
 
 Tourmaline turns a Markdown document into movable cards on a browser canvas.
@@ -174,7 +175,10 @@ const state = {
   itemStates: {},
   localImageUrls: new Map(),
   cardEditors: new Map(),
-  saveTimer: null
+  saveTimer: null,
+  layoutSaveTimer: null,
+  isAutoSaving: false,
+  hasPendingAutoSave: false
 };
 
 const els = {
@@ -329,6 +333,8 @@ async function openMarkdownFile() {
     return;
   }
   const [handle] = await window.showOpenFilePicker({
+    id: MARKDOWN_PICKER_ID,
+    startIn: getPickerStartIn(),
     multiple: false,
     types: [{ description: "Markdown", accept: { "text/markdown": [".md", ".markdown"] } }]
   });
@@ -359,20 +365,76 @@ async function openFolder() {
 }
 
 async function saveMarkdownFile() {
-  if (!state.fileHandle) {
-    await db.set("documents", state.documentKey, { markdown: state.markdown, updatedAt: Date.now() });
-    setStatus("Saved sample document in IndexedDB.");
-    return;
+  try {
+    flushActiveEditor({ reparse: false });
+    if (!state.fileHandle) {
+      if (state.directoryHandle) {
+        const handle = await state.directoryHandle.getFileHandle(state.fileName || "Untitled.md", { create: true });
+        state.fileHandle = handle;
+        if (await writeMarkdownToFileHandle(handle)) setStatus(`Saved ${state.fileName} in linked folder.`);
+        return;
+      }
+      const handle = await requestSaveFileHandle();
+      if (handle === undefined) return;
+      if (handle) {
+        state.fileHandle = handle;
+        state.fileName = handle.name || state.fileName;
+        state.documentKey = getDocumentIdentity({ name: state.fileName });
+        renderShell();
+        await saveLayout();
+        if (await writeMarkdownToFileHandle(handle)) setStatus(`Saved ${state.fileName}`);
+        return;
+      }
+      await db.set("documents", state.documentKey, { markdown: state.markdown, updatedAt: Date.now() });
+      downloadMarkdownFallback();
+      setStatus("Saved a browser copy and downloaded the Markdown file.");
+      return;
+    }
+    if (await writeMarkdownToFileHandle(state.fileHandle)) setStatus(`Saved ${state.fileName}`);
+  } catch (error) {
+    setStatus(`Save failed: ${error.message}`);
   }
-  const permission = await ensureWritable(state.fileHandle);
+}
+
+async function requestSaveFileHandle() {
+  if (!window.showSaveFilePicker) return null;
+  try {
+    return await window.showSaveFilePicker({
+      id: MARKDOWN_PICKER_ID,
+      startIn: getPickerStartIn(),
+      suggestedName: state.fileName || "Untitled.md",
+      types: [{ description: "Markdown", accept: { "text/markdown": [".md", ".markdown"] } }]
+    });
+  } catch (error) {
+    if (error?.name !== "AbortError") setStatus(`Could not choose save location: ${error.message}`);
+    return undefined;
+  }
+}
+
+async function writeMarkdownToFileHandle(handle) {
+  const permission = await ensureWritable(handle);
   if (!permission) {
     setStatus("Write permission was not granted.");
-    return;
+    return false;
   }
-  const writable = await state.fileHandle.createWritable();
+  const writable = await handle.createWritable();
   await writable.write(state.markdown);
   await writable.close();
-  setStatus(`Saved ${state.fileName}`);
+  return true;
+}
+
+function downloadMarkdownFallback() {
+  const blob = new Blob([state.markdown], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = state.fileName || "Untitled.md";
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function getPickerStartIn() {
+  return state.directoryHandle || "documents";
 }
 
 async function ensureWritable(handle) {
@@ -383,11 +445,53 @@ async function ensureWritable(handle) {
 
 function scheduleDocumentSave() {
   clearTimeout(state.saveTimer);
-  state.saveTimer = setTimeout(() => {
-    if (!state.fileHandle) {
-      db.set("documents", state.documentKey, { markdown: state.markdown, updatedAt: Date.now() });
+  state.saveTimer = setTimeout(autoSaveDocument, 800);
+}
+
+function flushActiveEditor(options = {}) {
+  const itemId = state.editingItemId;
+  const editor = itemId ? state.cardEditors.get(itemId) : null;
+  const item = state.parsed?.items.find((candidate) => candidate.id === itemId);
+  if (editor && item) updateItemMarkdownFromEditor(editor, item, options);
+}
+
+function scheduleLayoutSave() {
+  clearTimeout(state.layoutSaveTimer);
+  state.layoutSaveTimer = setTimeout(saveLayout, 300);
+}
+
+async function autoSaveDocument() {
+  if (state.isAutoSaving) {
+    state.hasPendingAutoSave = true;
+    return;
+  }
+  state.isAutoSaving = true;
+  try {
+    do {
+      state.hasPendingAutoSave = false;
+      await persistDocumentChange();
+    } while (state.hasPendingAutoSave);
+  } finally {
+    state.isAutoSaving = false;
+  }
+}
+
+async function persistDocumentChange() {
+  try {
+    if (state.fileHandle) {
+      if (await writeMarkdownToFileHandle(state.fileHandle)) setStatus(`Auto-saved ${state.fileName}`);
+      return;
     }
-  }, 300);
+    if (state.directoryHandle) {
+      const handle = await state.directoryHandle.getFileHandle(state.fileName || "Untitled.md", { create: true });
+      state.fileHandle = handle;
+      if (await writeMarkdownToFileHandle(handle)) setStatus(`Auto-saved ${state.fileName} in linked folder.`);
+      return;
+    }
+    await db.set("documents", state.documentKey, { markdown: state.markdown, updatedAt: Date.now() });
+  } catch (error) {
+    setStatus(`Auto-save failed: ${error.message}`);
+  }
 }
 
 async function reparseAndRender() {
@@ -397,9 +501,10 @@ async function reparseAndRender() {
     .filter((entry) => entry.frame);
   const previousSelectedItem = previousItems.find((item) => item.id === state.selectedId);
   const previousEditingItem = previousItems.find((item) => item.id === state.editingItemId);
+  const previousScope = getCurrentScopeSnapshot();
   const previousScopeTitlePath = getCurrentScopeTitlePath();
   state.parsed = parseMarkdown(state.markdown);
-  restoreScopeFromTitlePath(previousScopeTitlePath);
+  restoreScope(previousScope, previousScopeTitlePath);
   migrateItemStates(previousFrames);
   const previousSelection = state.selectedId;
   if (previousSelectedItem && !findRenderableById(previousSelection)) {
@@ -419,6 +524,7 @@ async function reparseAndRender() {
   }
   renderShell();
   await renderCanvas();
+  scheduleLayoutSave();
   if (!state.hasInitialFit) {
     requestAnimationFrame(fitInitialViewport);
   }
@@ -460,6 +566,67 @@ function getCurrentScopeTitlePath() {
   return state.scopeStack.map((scopeId) => state.parsed.scopes[scopeId]?.title).filter(Boolean);
 }
 
+function getCurrentScopeSnapshot() {
+  const scope = state.parsed?.scopes?.[state.currentScopeId];
+  if (!scope) return null;
+  return {
+    id: scope.id,
+    title: scope.title,
+    startLine: scope.startLine,
+    endLine: scope.endLine,
+    headingLevel: scope.headingLevel,
+    depth: state.scopeStack.length
+  };
+}
+
+function restoreScope(previousScope, titlePath) {
+  if (!state.parsed?.scopes) return;
+  if (previousScope && state.parsed.scopes[previousScope.id]) {
+    setCurrentScopeStack(buildScopeStack(previousScope.id));
+    return;
+  }
+  const lineMatchedScope = previousScope ? findScopeByPreviousPosition(previousScope) : null;
+  if (lineMatchedScope) {
+    setCurrentScopeStack(buildScopeStack(lineMatchedScope.id));
+    return;
+  }
+  restoreScopeFromTitlePath(titlePath);
+}
+
+function findScopeByPreviousPosition(previousScope) {
+  const scopes = Object.values(state.parsed.scopes);
+  return scopes.find((scope) =>
+    scope.startLine === previousScope.startLine &&
+    scope.headingLevel === previousScope.headingLevel
+  ) ?? scopes
+    .filter((scope) => scope.headingLevel === previousScope.headingLevel && scope.title === previousScope.title)
+    .sort((a, b) => Math.abs(a.startLine - previousScope.startLine) - Math.abs(b.startLine - previousScope.startLine))[0]
+    ?? null;
+}
+
+function setCurrentScopeStack(scopeStack) {
+  state.scopeStack = scopeStack.length ? scopeStack : ["scope:root"];
+  state.currentScopeId = state.scopeStack[state.scopeStack.length - 1];
+  syncCurrentScope();
+}
+
+function buildScopeStack(scopeId) {
+  const stack = [];
+  let currentId = scopeId;
+  while (currentId && state.parsed.scopes[currentId]) {
+    stack.unshift(currentId);
+    if (currentId === "scope:root") break;
+    currentId = findParentScopeId(currentId);
+  }
+  return stack[0] === "scope:root" ? stack : ["scope:root", ...stack];
+}
+
+function findParentScopeId(scopeId) {
+  return Object.values(state.parsed.scopes).find((scope) =>
+    scope.items.some((item) => item.childScopeId === scopeId)
+  )?.id ?? null;
+}
+
 function restoreScopeFromTitlePath(titlePath) {
   if (!titlePath.length || !state.parsed?.scopes) return;
   const nextStack = ["scope:root"];
@@ -472,9 +639,7 @@ function restoreScopeFromTitlePath(titlePath) {
     currentScope = nextScope;
   }
   const nextScopeId = nextStack[nextStack.length - 1];
-  state.currentScopeId = nextScopeId;
-  state.scopeStack = nextStack;
-  syncCurrentScope();
+  setCurrentScopeStack(nextStack);
 }
 
 function parseMarkdown(markdown) {
@@ -1675,8 +1840,8 @@ async function saveLayout() {
 }
 
 function getDocumentIdentity(file) {
-  const f = file ?? { name: state.fileName, size: state.markdown.length, lastModified: 0 };
-  return `doc:${f.name}:${f.size}:${f.lastModified}`;
+  const name = file?.name || state.fileName || "Untitled.md";
+  return `doc:${name}`;
 }
 
 function updateZoomText() {
