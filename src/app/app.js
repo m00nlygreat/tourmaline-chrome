@@ -330,7 +330,7 @@ function parseMarkdown(markdown) {
     if (!scopeHeadings.length) {
       const content = allLines.slice(startLine, endLine + 1).join("\n").trim();
       if (content) items.push(createItem(`orphan:${scopeId}:body`, "orphan", title, startLine, endLine, content, 1));
-      scopes[scopeId] = { id: scopeId, title, startLine, endLine, items, tree: [] };
+      scopes[scopeId] = { id: scopeId, title, startLine, endLine, headingLevel: openingHeading?.level ?? 0, items, tree: [] };
       scopes[scopeId].tree = buildLayerTreeForItems(items, scopes);
       return scopes[scopeId];
     }
@@ -352,7 +352,15 @@ function parseMarkdown(markdown) {
       items.push(item);
       buildScope(childScopeId, heading.title, heading.line + 1, sectionEnd, heading);
     });
-    scopes[scopeId] = { id: scopeId, title: title === "Document" ? shellHeadings[0]?.title ?? title : title, startLine, endLine, items, tree: [] };
+    scopes[scopeId] = {
+      id: scopeId,
+      title: title === "Document" ? shellHeadings[0]?.title ?? title : title,
+      startLine,
+      endLine,
+      headingLevel: openingHeading?.level ?? 0,
+      items,
+      tree: []
+    };
     scopes[scopeId].tree = buildLayerTreeForItems(items, scopes);
     return scopes[scopeId];
   }
@@ -1046,11 +1054,20 @@ function replaceLineRange(startLine, endLine, replacement) {
   reparseAndRender();
 }
 
+function getNewHeadingLevelForCurrentCanvas() {
+  const scope = state.parsed?.scopes?.[state.currentScopeId];
+  const sectionLevels = (scope?.items ?? state.parsed?.items ?? [])
+    .filter((item) => item.kind === "section")
+    .map((item) => item.level);
+  if (sectionLevels.length) return clamp(Math.min(...sectionLevels), 1, 6);
+  return clamp((scope?.headingLevel ?? 0) + 1, 1, 6);
+}
+
 function createHeadingAtViewportPoint(clientX, clientY) {
   const point = getStageAnchorPoint({ clientX, clientY }, state.zoom);
   const worldX = Math.round(point.x - STAGE_WIDTH / 2);
   const worldY = Math.round(point.y - STAGE_HEIGHT / 2);
-  const level = Math.max(1, Math.min(...(state.parsed.items.filter((item) => item.kind === "section").map((item) => item.level).concat([1]))));
+  const level = getNewHeadingLevelForCurrentCanvas();
   const title = "New heading";
   const lines = state.markdown.split(/\r?\n/);
   const scope = state.parsed.scopes[state.currentScopeId];
