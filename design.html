@@ -6,12 +6,12 @@
 <title>Tourmaline Chrome — 화면 디자인</title>
 <style>
   :root {
-    --rose:          #d4909a;
-    --rose-light:    #f0d0d4;
-    --rose-muted:    rgba(212,144,154,0.15);
-    --seafoam:       #5dbcb4;
-    --seafoam-light: #a8ddd9;
-    --seafoam-muted: rgba(93,188,180,0.15);
+    --rose:          #5dbcb4;
+    --rose-light:    #a8ddd9;
+    --rose-muted:    rgba(93,188,180,0.15);
+    --seafoam:       #d4909a;
+    --seafoam-light: #f0d0d4;
+    --seafoam-muted: rgba(212,144,154,0.15);
     --surface:       #ffffff;
     --border:        #e8e2e4;
     --text:          #2e2428;
@@ -67,7 +67,7 @@
   .toolbar-btn:hover { background: var(--rose-muted); border-color: var(--rose-light); }
   .toolbar-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; }
   .toolbar-btn.primary {
-    background: linear-gradient(135deg, var(--rose) 0%, #c47880 100%);
+    background: linear-gradient(135deg, var(--rose) 0%, #459e98 100%);
     color: #fff; border-color: transparent;
   }
   .toolbar-btn.primary:hover { opacity: 0.9; }
@@ -127,8 +127,8 @@
   .layer-row:hover { background: var(--seafoam-muted); color: var(--text); }
   .layer-row.selected {
     background: var(--seafoam-muted);
-    box-shadow: inset 0 0 0 1px rgba(93,188,180,0.45);
-    color: #2a6e6a;
+    box-shadow: inset 0 0 0 1px rgba(212,144,154,0.45);
+    color: #8e4f59;
   }
   .layer-row.drillable .layer-label { font-weight: 600; color: var(--text); }
   .layer-toggle {
@@ -152,7 +152,7 @@
     position: absolute; top: 0; right: -3px; bottom: 0; width: 6px;
     cursor: col-resize; z-index: 5;
   }
-  .layer-resize-handle:hover { background: rgba(93,188,180,0.3); }
+  .layer-resize-handle:hover { background: rgba(212,144,154,0.3); }
 
   /* ── Canvas ── */
   .canvas-area {
@@ -184,7 +184,7 @@
   }
   .card.editing {
     border-color: var(--seafoam);
-    box-shadow: 0 0 0 3px rgba(93,188,180,0.22), 0 10px 36px rgba(0,0,0,0.1);
+    box-shadow: 0 0 0 3px rgba(212,144,154,0.22), 0 10px 36px rgba(0,0,0,0.1);
     cursor: text;
   }
   .card::before {
@@ -192,6 +192,7 @@
     display: block; height: 3px;
     background: linear-gradient(90deg, var(--rose-light) 0%, var(--seafoam-light) 100%);
   }
+  .card.selected::before { background: var(--seafoam); }
   .card-body { padding: 14px 16px 16px; }
   .card-h1 { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
   .card-h2 { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
@@ -203,7 +204,7 @@
     border: 1px solid var(--rose-light);
   }
   .card-tag.green {
-    background: var(--seafoam-muted); color: #3a8e8a;
+    background: var(--seafoam-muted); color: #8e4f59;
     border-color: var(--seafoam-light);
   }
 
