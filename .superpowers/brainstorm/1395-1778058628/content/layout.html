@@ -1,0 +1,108 @@
+<h2>레이아웃 구성</h2>
+<p class="subtitle">레이어패널과 캔버스의 배치 방식을 선택해주세요.</p>
+
+<div class="cards">
+
+  <!-- Option A: Classic sidebar -->
+  <div class="card" data-choice="sidebar" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#f0f0f5;height:200px;border-radius:8px;overflow:hidden;display:flex;flex-direction:column;">
+      <!-- toolbar -->
+      <div style="height:38px;background:#fff;border-bottom:1px solid #dde;display:flex;align-items:center;padding:0 12px;gap:8px;flex-shrink:0;">
+        <div style="width:16px;height:16px;background:#e0e0ec;border-radius:4px;"></div>
+        <div style="width:50px;height:12px;background:#e0e0ec;border-radius:3px;"></div>
+        <div style="width:30px;height:12px;background:#e0e0ec;border-radius:3px;opacity:0.5;"></div>
+        <div style="flex:1"></div>
+        <div style="width:24px;height:24px;background:#e8e8f5;border-radius:6px;"></div>
+      </div>
+      <!-- workspace -->
+      <div style="flex:1;display:flex;min-height:0;">
+        <!-- layer panel -->
+        <div style="width:130px;flex-shrink:0;background:#fafafa;border-right:1px solid #dde;display:flex;flex-direction:column;">
+          <div style="padding:8px 8px 4px;font-size:9px;font-weight:700;color:#aaa;letter-spacing:0.08em;">LAYERS</div>
+          <div style="padding:2px 8px;display:flex;flex-direction:column;gap:3px;">
+            <div style="height:9px;background:#dde;border-radius:3px;"></div>
+            <div style="height:9px;background:#e8e8f5;border-radius:3px;width:85%;"></div>
+            <div style="height:9px;background:#5b5bd6;border-radius:3px;width:78%;opacity:0.35;"></div>
+            <div style="height:9px;background:#e8e8f5;border-radius:3px;width:90%;"></div>
+            <div style="height:9px;background:#e8e8f5;border-radius:3px;width:65%;"></div>
+          </div>
+        </div>
+        <!-- canvas -->
+        <div style="flex:1;background:#ebebf2;background-image:radial-gradient(circle,#c8c8d8 1px,transparent 1px);background-size:18px 18px;position:relative;">
+          <div style="position:absolute;left:12px;top:10px;width:80px;height:56px;background:#fff;border:1px solid #dde;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.08);"></div>
+          <div style="position:absolute;left:102px;top:18px;width:72px;height:48px;background:#fff;border:1px solid #dde;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.08);"></div>
+          <div style="position:absolute;left:16px;top:76px;width:68px;height:40px;background:#fff;border:1px solid #dde;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.08);"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. 고정 사이드바</h3>
+      <p>레이어패널이 왼쪽에 고정. 항상 보이며 캔버스와 명확히 분리됩니다. Obsidian 플러그인과 동일한 구조.</p>
+    </div>
+  </div>
+
+  <!-- Option B: Overlay panel -->
+  <div class="card" data-choice="overlay" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#f0f0f5;height:200px;border-radius:8px;overflow:hidden;display:flex;flex-direction:column;">
+      <!-- toolbar -->
+      <div style="height:38px;background:#fff;border-bottom:1px solid #dde;display:flex;align-items:center;padding:0 12px;gap:8px;flex-shrink:0;">
+        <div style="width:16px;height:16px;background:#5b5bd6;border-radius:4px;opacity:0.7;"></div>
+        <div style="width:50px;height:12px;background:#e0e0ec;border-radius:3px;"></div>
+        <div style="flex:1"></div>
+        <div style="width:24px;height:24px;background:#e8e8f5;border-radius:6px;"></div>
+      </div>
+      <!-- workspace: full canvas + floating panel -->
+      <div style="flex:1;position:relative;background:#ebebf2;background-image:radial-gradient(circle,#c8c8d8 1px,transparent 1px);background-size:18px 18px;">
+        <!-- cards spread wider since panel is floating -->
+        <div style="position:absolute;left:20px;top:10px;width:88px;height:58px;background:#fff;border:1px solid #dde;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.08);"></div>
+        <div style="position:absolute;left:118px;top:18px;width:80px;height:50px;background:#fff;border:1px solid #dde;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.08);"></div>
+        <div style="position:absolute;left:24px;top:78px;width:72px;height:42px;background:#fff;border:1px solid #dde;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.08);"></div>
+        <!-- floating layer panel -->
+        <div style="position:absolute;left:8px;top:8px;bottom:8px;width:110px;background:#fff;border:1px solid #dde;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.14);display:flex;flex-direction:column;">
+          <div style="padding:7px 8px 4px;font-size:9px;font-weight:700;color:#aaa;letter-spacing:0.08em;">LAYERS</div>
+          <div style="padding:2px 8px;display:flex;flex-direction:column;gap:3px;">
+            <div style="height:8px;background:#dde;border-radius:3px;"></div>
+            <div style="height:8px;background:#e8e8f5;border-radius:3px;width:80%;"></div>
+            <div style="height:8px;background:#5b5bd6;border-radius:3px;width:72%;opacity:0.35;"></div>
+            <div style="height:8px;background:#e8e8f5;border-radius:3px;width:88%;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. 플로팅 패널</h3>
+      <p>레이어패널이 캔버스 위에 떠 있는 오버레이. 캔버스 영역이 최대화되고 패널을 닫으면 완전한 전체 화면이 됩니다.</p>
+    </div>
+  </div>
+
+  <!-- Option C: Bottom panel -->
+  <div class="card" data-choice="bottom" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#f0f0f5;height:200px;border-radius:8px;overflow:hidden;display:flex;flex-direction:column;">
+      <!-- toolbar -->
+      <div style="height:38px;background:#fff;border-bottom:1px solid #dde;display:flex;align-items:center;padding:0 12px;gap:8px;flex-shrink:0;">
+        <div style="width:16px;height:16px;background:#e0e0ec;border-radius:4px;"></div>
+        <div style="width:50px;height:12px;background:#e0e0ec;border-radius:3px;"></div>
+        <div style="flex:1"></div>
+        <div style="width:24px;height:24px;background:#e8e8f5;border-radius:6px;"></div>
+      </div>
+      <!-- canvas -->
+      <div style="flex:1;background:#ebebf2;background-image:radial-gradient(circle,#c8c8d8 1px,transparent 1px);background-size:18px 18px;position:relative;">
+        <div style="position:absolute;left:16px;top:8px;width:90px;height:52px;background:#fff;border:1px solid #dde;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.08);"></div>
+        <div style="position:absolute;left:116px;top:14px;width:80px;height:46px;background:#fff;border:1px solid #dde;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.08);"></div>
+      </div>
+      <!-- bottom layer panel -->
+      <div style="height:52px;background:#fafafa;border-top:1px solid #dde;display:flex;align-items:center;gap:6px;padding:0 10px;overflow:hidden;">
+        <div style="font-size:9px;font-weight:700;color:#aaa;letter-spacing:0.08em;flex-shrink:0;">LAYERS</div>
+        <div style="height:28px;width:60px;background:#fff;border:1px solid #dde;border-radius:6px;flex-shrink:0;"></div>
+        <div style="height:28px;width:50px;background:#5b5bd6;opacity:0.2;border-radius:6px;flex-shrink:0;"></div>
+        <div style="height:28px;width:55px;background:#fff;border:1px solid #dde;border-radius:6px;flex-shrink:0;"></div>
+        <div style="height:28px;width:48px;background:#fff;border:1px solid #dde;border-radius:6px;flex-shrink:0;"></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. 하단 패널</h3>
+      <p>레이어패널이 아래에 수평으로 배치. 캔버스 세로 공간이 넓어지지만 레이어 트리 표현에 제약이 있습니다.</p>
+    </div>
+  </div>
+
+</div>

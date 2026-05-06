@@ -1,0 +1,105 @@
+<h2>색상 테마</h2>
+<p class="subtitle">앱의 전체 분위기를 결정합니다. 어떤 방향이 맞나요?</p>
+
+<div class="cards">
+
+  <!-- Option A: Dark -->
+  <div class="card" data-choice="dark" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#1a1a1f;height:180px;border-radius:8px;overflow:hidden;display:flex;flex-direction:column;gap:0;">
+      <!-- toolbar -->
+      <div style="height:36px;background:#1f1f26;border-bottom:1px solid #2e2e3a;display:flex;align-items:center;padding:0 12px;gap:8px;">
+        <div style="width:60px;height:14px;background:#2e2e3a;border-radius:4px;"></div>
+        <div style="width:40px;height:14px;background:#2e2e3a;border-radius:4px;"></div>
+        <div style="flex:1"></div>
+        <div style="width:28px;height:14px;background:#2e2e3a;border-radius:4px;"></div>
+      </div>
+      <!-- workspace -->
+      <div style="flex:1;display:flex;">
+        <!-- layer panel -->
+        <div style="width:70px;background:#16161c;border-right:1px solid #2e2e3a;padding:8px 6px;display:flex;flex-direction:column;gap:4px;">
+          <div style="height:8px;background:#3a3a4a;border-radius:3px;"></div>
+          <div style="height:8px;background:#2e2e3a;border-radius:3px;width:80%;"></div>
+          <div style="height:8px;background:#2e2e3a;border-radius:3px;width:90%;"></div>
+          <div style="height:8px;background:#6c63ff;border-radius:3px;width:75%;opacity:0.6;"></div>
+          <div style="height:8px;background:#2e2e3a;border-radius:3px;width:60%;"></div>
+        </div>
+        <!-- canvas -->
+        <div style="flex:1;background:#111117;position:relative;background-image:radial-gradient(circle,#2a2a35 1px,transparent 1px);background-size:20px 20px;">
+          <div style="position:absolute;left:14px;top:12px;width:60px;height:44px;background:#1f1f28;border:1px solid #2e2e3a;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.4);"></div>
+          <div style="position:absolute;left:82px;top:20px;width:55px;height:38px;background:#1f1f28;border:1px solid #2e2e3a;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.4);"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Dark</h3>
+      <p>Obsidian에서 이어지는 어두운 테마. 장시간 작업에 눈이 편하고 카드가 선명하게 돋보입니다.</p>
+    </div>
+  </div>
+
+  <!-- Option B: Light -->
+  <div class="card" data-choice="light" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#f5f5f7;height:180px;border-radius:8px;overflow:hidden;display:flex;flex-direction:column;gap:0;">
+      <!-- toolbar -->
+      <div style="height:36px;background:#ffffff;border-bottom:1px solid #e0e0e6;display:flex;align-items:center;padding:0 12px;gap:8px;">
+        <div style="width:60px;height:14px;background:#e0e0e6;border-radius:4px;"></div>
+        <div style="width:40px;height:14px;background:#e0e0e6;border-radius:4px;"></div>
+        <div style="flex:1"></div>
+        <div style="width:28px;height:14px;background:#e0e0e6;border-radius:4px;"></div>
+      </div>
+      <!-- workspace -->
+      <div style="flex:1;display:flex;">
+        <!-- layer panel -->
+        <div style="width:70px;background:#fafafa;border-right:1px solid #e0e0e6;padding:8px 6px;display:flex;flex-direction:column;gap:4px;">
+          <div style="height:8px;background:#c0c0cc;border-radius:3px;"></div>
+          <div style="height:8px;background:#e0e0e6;border-radius:3px;width:80%;"></div>
+          <div style="height:8px;background:#e0e0e6;border-radius:3px;width:90%;"></div>
+          <div style="height:8px;background:#5b5bd6;border-radius:3px;width:75%;opacity:0.5;"></div>
+          <div style="height:8px;background:#e0e0e6;border-radius:3px;width:60%;"></div>
+        </div>
+        <!-- canvas -->
+        <div style="flex:1;background:#ebebf0;position:relative;background-image:radial-gradient(circle,#c8c8d8 1px,transparent 1px);background-size:20px 20px;">
+          <div style="position:absolute;left:14px;top:12px;width:60px;height:44px;background:#ffffff;border:1px solid #dcdce8;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);"></div>
+          <div style="position:absolute;left:82px;top:20px;width:55px;height:38px;background:#ffffff;border:1px solid #dcdce8;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Light</h3>
+      <p>깔끔하고 밝은 인터페이스. 문서 작업 느낌이 강하고 낮에 모니터 환경에 어울립니다.</p>
+    </div>
+  </div>
+
+  <!-- Option C: Warm Dark -->
+  <div class="card" data-choice="warm-dark" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#18161a;height:180px;border-radius:8px;overflow:hidden;display:flex;flex-direction:column;gap:0;">
+      <!-- toolbar -->
+      <div style="height:36px;background:linear-gradient(90deg,#1e1b22,#1c1924);border-bottom:1px solid #2c2830;display:flex;align-items:center;padding:0 12px;gap:8px;">
+        <div style="width:60px;height:14px;background:#2c2830;border-radius:4px;"></div>
+        <div style="width:40px;height:14px;background:#2c2830;border-radius:4px;"></div>
+        <div style="flex:1"></div>
+        <div style="width:28px;height:14px;background:#2c2830;border-radius:4px;"></div>
+      </div>
+      <!-- workspace -->
+      <div style="flex:1;display:flex;">
+        <!-- layer panel -->
+        <div style="width:70px;background:#141218;border-right:1px solid #2c2830;padding:8px 6px;display:flex;flex-direction:column;gap:4px;">
+          <div style="height:8px;background:#3a3540;border-radius:3px;"></div>
+          <div style="height:8px;background:#2c2830;border-radius:3px;width:80%;"></div>
+          <div style="height:8px;background:#2c2830;border-radius:3px;width:90%;"></div>
+          <div style="height:8px;background:#c084fc;border-radius:3px;width:75%;opacity:0.55;"></div>
+          <div style="height:8px;background:#2c2830;border-radius:3px;width:60%;"></div>
+        </div>
+        <!-- canvas -->
+        <div style="flex:1;background:#100e14;position:relative;background-image:radial-gradient(circle,#28233a 1px,transparent 1px);background-size:20px 20px;">
+          <div style="position:absolute;left:14px;top:12px;width:60px;height:44px;background:linear-gradient(135deg,#1e1b28,#1a1820);border:1px solid rgba(180,130,255,0.18);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.5);"></div>
+          <div style="position:absolute;left:82px;top:20px;width:55px;height:38px;background:linear-gradient(135deg,#1e1b28,#1a1820);border:1px solid rgba(180,130,255,0.18);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.5);"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Warm Dark</h3>
+      <p>보라빛 색조가 감도는 어두운 테마. 창의적인 느낌과 고급스러운 분위기를 줍니다.</p>
+    </div>
+  </div>
+
+</div>

@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tourmaline Chrome — 화면 디자인</title>
+<style>
+  :root {
+    --rose:          #d4909a;
+    --rose-light:    #f0d0d4;
+    --rose-muted:    rgba(212,144,154,0.15);
+    --seafoam:       #5dbcb4;
+    --seafoam-light: #a8ddd9;
+    --seafoam-muted: rgba(93,188,180,0.15);
+    --surface:       #ffffff;
+    --border:        #e8e2e4;
+    --text:          #2e2428;
+    --text-muted:    #9a8e91;
+    --text-faint:    #c4b8bb;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    height: 100vh; overflow: hidden;
+  }
+
+  /* ── App shell ── */
+  .app {
+    width: 100%; height: 100vh;
+    display: flex; flex-direction: column;
+    background: var(--surface);
+  }
+
+  /* ── Toolbar ── */
+  .toolbar {
+    height: 44px; flex-shrink: 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center;
+    padding: 0 14px; gap: 8px;
+  }
+  .toolbar-logo {
+    width: 24px; height: 24px; flex-shrink: 0;
+    border-radius: 7px;
+    background: linear-gradient(135deg, var(--rose) 0%, var(--seafoam) 100%);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .toolbar-logo svg { width: 13px; height: 13px; fill: #fff; }
+
+  .breadcrumbs { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; }
+  .breadcrumb {
+    font-size: 13px; color: var(--text-muted);
+    padding: 3px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap;
+  }
+  .breadcrumb:hover { background: var(--rose-muted); }
+  .breadcrumb.current { color: var(--text); font-weight: 600; background: var(--rose-muted); }
+  .breadcrumb-sep { color: var(--text-faint); font-size: 13px; }
+
+  .toolbar-actions { display: flex; align-items: center; gap: 6px; }
+  .toolbar-btn {
+    height: 28px; padding: 0 10px;
+    border: 1px solid var(--border); border-radius: 7px;
+    background: var(--surface); font-size: 12px; color: #555;
+    cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap;
+  }
+  .toolbar-btn:hover { background: var(--rose-muted); border-color: var(--rose-light); }
+  .toolbar-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; }
+  .toolbar-btn.primary {
+    background: linear-gradient(135deg, var(--rose) 0%, #c47880 100%);
+    color: #fff; border-color: transparent;
+  }
+  .toolbar-btn.primary:hover { opacity: 0.9; }
+  .zoom-display {
+    font-size: 12px; color: var(--text-muted);
+    padding: 0 8px; height: 28px;
+    border: 1px solid var(--border); border-radius: 7px;
+    display: flex; align-items: center; cursor: pointer;
+  }
+  .zoom-display:hover { background: var(--seafoam-muted); border-color: var(--seafoam-light); }
+
+  /* ── Workspace ── */
+  .workspace { flex: 1; display: flex; min-height: 0; }
+
+  /* ── Layer panel ── */
+  .layer-panel {
+    width: 240px; flex-shrink: 0;
+    background: #fdf9fa;
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; min-height: 0;
+    position: relative;
+  }
+  .layer-panel-header {
+    height: 40px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .layer-eyebrow {
+    font-size: 11px; font-weight: 700;
+    letter-spacing: 0.08em; color: var(--text-faint);
+  }
+  .layer-header-actions { display: flex; gap: 4px; }
+  .icon-btn {
+    width: 22px; height: 22px; border-radius: 5px; border: none;
+    background: transparent; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-faint);
+  }
+  .icon-btn:hover { background: var(--rose-muted); color: var(--rose); }
+  .icon-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; }
+
+  .layer-scope-header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    padding: 10px 12px 6px; gap: 8px;
+  }
+  .layer-scope-title { font-size: 13px; font-weight: 700; color: var(--text); }
+  .layer-scope-meta  { font-size: 11px; color: var(--text-faint); }
+
+  .layer-tree { flex: 1; overflow-y: auto; padding: 2px 8px 12px; }
+
+  .layer-row {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 6px; border-radius: 8px; cursor: pointer;
+    font-size: 12.5px; color: var(--text-muted);
+  }
+  .layer-row:hover { background: var(--seafoam-muted); color: var(--text); }
+  .layer-row.selected {
+    background: var(--seafoam-muted);
+    box-shadow: inset 0 0 0 1px rgba(93,188,180,0.45);
+    color: #2a6e6a;
+  }
+  .layer-row.drillable .layer-label { font-weight: 600; color: var(--text); }
+  .layer-toggle {
+    width: 16px; height: 16px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-faint);
+  }
+  .layer-toggle svg { width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 2.5; }
+  .layer-glyph {
+    width: 16px; height: 16px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-faint);
+  }
+  .layer-glyph svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2; }
+  .layer-row.selected .layer-glyph { color: var(--seafoam); }
+  .layer-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .layer-count  { font-size: 11px; color: var(--text-faint); flex-shrink: 0; }
+  .layer-children { margin-left: 16px; }
+
+  .layer-resize-handle {
+    position: absolute; top: 0; right: -3px; bottom: 0; width: 6px;
+    cursor: col-resize; z-index: 5;
+  }
+  .layer-resize-handle:hover { background: rgba(93,188,180,0.3); }
+
+  /* ── Canvas ── */
+  .canvas-area {
+    flex: 1; position: relative; overflow: hidden;
+    background-color: #ede9eb;
+    background-image: radial-gradient(circle, #d4cdd0 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+  .stage-scroll { position: absolute; inset: 0; overflow: auto; }
+  .stage { position: relative; width: 3200px; height: 2200px; transform-origin: top left; }
+
+  /* ── Cards ── */
+  .card {
+    position: absolute; width: 310px;
+    border: 1.5px solid #e4dde0;
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 2px 10px rgba(180,120,130,0.08), 0 6px 28px rgba(0,0,0,0.06);
+    overflow: hidden; cursor: grab;
+    transition: border-color 130ms, box-shadow 130ms;
+  }
+  .card:hover {
+    border-color: var(--seafoam-light);
+    box-shadow: 0 0 0 3px var(--seafoam-muted), 0 6px 28px rgba(0,0,0,0.08);
+  }
+  .card.selected {
+    border-color: var(--seafoam);
+    box-shadow: 0 0 0 3px var(--seafoam-muted), 0 6px 28px rgba(0,0,0,0.1);
+  }
+  .card.editing {
+    border-color: var(--seafoam);
+    box-shadow: 0 0 0 3px rgba(93,188,180,0.22), 0 10px 36px rgba(0,0,0,0.1);
+    cursor: text;
+  }
+  .card::before {
+    content: '';
+    display: block; height: 3px;
+    background: linear-gradient(90deg, var(--rose-light) 0%, var(--seafoam-light) 100%);
+  }
+  .card-body { padding: 14px 16px 16px; }
+  .card-h1 { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+  .card-h2 { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+  .card-p  { font-size: 12px; color: #6a5a5e; line-height: 1.65; }
+  .card-tag {
+    display: inline-block; font-size: 11px;
+    background: var(--rose-muted); color: var(--rose);
+    padding: 2px 8px; border-radius: 4px; margin-top: 8px;
+    border: 1px solid var(--rose-light);
+  }
+  .card-tag.green {
+    background: var(--seafoam-muted); color: #3a8e8a;
+    border-color: var(--seafoam-light);
+  }
+
+  .card-resize-handle {
+    position: absolute; right: -6px; top: 0; bottom: 0; width: 12px;
+    cursor: ew-resize; opacity: 0; transition: opacity 120ms;
+  }
+  .card:hover .card-resize-handle,
+  .card.selected .card-resize-handle { opacity: 1; }
+  .card-resize-handle::after {
+    content: ''; position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+    width: 3px; height: 36px; border-radius: 999px;
+    background: var(--seafoam); opacity: 0.5;
+  }
+
+  .edit-cursor {
+    display: inline-block; width: 2px; height: 13px;
+    background: var(--seafoam); vertical-align: middle;
+    animation: blink 1s step-end infinite; margin-left: 1px;
+  }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+
+  /* ── Orphan ── */
+  .orphan {
+    position: absolute;
+    cursor: grab;
+    padding: 4px 2px;
+  }
+  .orphan-label {
+    font-size: 11px; font-weight: 700;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--rose); margin-bottom: 6px;
+  }
+  .orphan-line { font-size: 12.5px; color: #7a6a6e; line-height: 1.8; }
+
+  /* ── Status bar ── */
+  .statusbar {
+    height: 24px; flex-shrink: 0;
+    background: #faf6f7;
+    border-top: 1px solid var(--border);
+    display: flex; align-items: center;
+    padding: 0 14px; gap: 14px;
+    font-size: 11px; color: var(--text-faint);
+  }
+  .status-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--seafoam); flex-shrink: 0;
+  }
+
+  /* ── Annotations ── */
+  .anno {
+    position: absolute; z-index: 10; pointer-events: none;
+    background: rgba(45,40,42,0.88);
+    color: #fff; font-size: 11px; font-weight: 600;
+    padding: 3px 8px; border-radius: 5px; white-space: nowrap;
+  }
+  .anno::after { content: ''; position: absolute; border: 5px solid transparent; }
+  .anno.bottom::after { top: 100%; left: 50%; transform: translateX(-50%); border-top-color: rgba(45,40,42,0.88); }
+  .anno.right::after  { top: 50%; left: 100%; transform: translateY(-50%); border-left-color: rgba(45,40,42,0.88); }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- TOOLBAR -->
+  <div class="toolbar">
+    <div class="toolbar-logo">
+      <svg viewBox="0 0 14 14"><polygon points="7,1 13,4.5 13,9.5 7,13 1,9.5 1,4.5"/></svg>
+    </div>
+    <div class="breadcrumbs">
+      <span class="breadcrumb">프로젝트 설계.md</span>
+      <span class="breadcrumb-sep">›</span>
+      <span class="breadcrumb current">1. 개요</span>
+    </div>
+    <div class="toolbar-actions">
+      <div class="zoom-display">75%</div>
+      <button class="toolbar-btn">
+        <svg viewBox="0 0 14 14"><path d="M2 2h10v10H2z"/><path d="M5 2v4h4"/></svg>
+        파일 열기
+      </button>
+      <button class="toolbar-btn primary">저장</button>
+    </div>
+  </div>
+
+  <!-- WORKSPACE -->
+  <div class="workspace">
+
+    <!-- LAYER PANEL -->
+    <div class="layer-panel">
+      <div class="layer-panel-header">
+        <span class="layer-eyebrow">LAYERS</span>
+        <div class="layer-header-actions">
+          <button class="icon-btn" title="모두 펼치기">
+            <svg viewBox="0 0 14 14"><path d="M2 4l5 5 5-5"/><path d="M2 8l5 5 5-5" opacity="0.5"/></svg>
+          </button>
+          <button class="icon-btn" title="패널 접기">
+            <svg viewBox="0 0 14 14"><path d="M5 2v10M2 7h3M9 4l-3 3 3 3"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="layer-scope-header">
+        <span class="layer-scope-title">1. 개요</span>
+        <span class="layer-scope-meta">5 items</span>
+      </div>
+
+      <div class="layer-tree">
+        <div class="layer-row drillable selected">
+          <div class="layer-toggle"><svg viewBox="0 0 12 12"><path d="M3 4.5l3 3 3-3"/></svg></div>
+          <div class="layer-glyph"><svg viewBox="0 0 12 12"><rect x="1" y="1" width="10" height="10" rx="2"/></svg></div>
+          <span class="layer-label">배경 및 목적</span>
+          <span class="layer-count">3</span>
+        </div>
+        <div class="layer-children">
+          <div class="layer-row">
+            <div class="layer-toggle"></div>
+            <div class="layer-glyph"><svg viewBox="0 0 12 12"><path d="M2 4h8M2 7h6"/></svg></div>
+            <span class="layer-label">문제 정의</span>
+          </div>
+          <div class="layer-row">
+            <div class="layer-toggle"></div>
+            <div class="layer-glyph"><svg viewBox="0 0 12 12"><path d="M2 4h8M2 7h6"/></svg></div>
+            <span class="layer-label">현재 상태</span>
+          </div>
+          <div class="layer-row">
+            <div class="layer-toggle"></div>
+            <div class="layer-glyph"><svg viewBox="0 0 12 12"><path d="M2 4h8M2 7h6"/></svg></div>
+            <span class="layer-label">목표 정의</span>
+          </div>
+        </div>
+        <div class="layer-row drillable">
+          <div class="layer-toggle"><svg viewBox="0 0 12 12"><path d="M4.5 3l3 3-3 3"/></svg></div>
+          <div class="layer-glyph"><svg viewBox="0 0 12 12"><rect x="1" y="1" width="10" height="10" rx="2"/></svg></div>
+          <span class="layer-label">기술 스택</span>
+          <span class="layer-count">2</span>
+        </div>
+        <div class="layer-row">
+          <div class="layer-toggle"></div>
+          <div class="layer-glyph"><svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="4"/></svg></div>
+          <span class="layer-label">참고 자료</span>
+        </div>
+      </div>
+
+      <div class="layer-resize-handle"></div>
+    </div>
+
+    <!-- CANVAS -->
+    <div class="canvas-area">
+      <div class="stage-scroll">
+        <div class="stage">
+
+          <!-- Card 1: currently being edited -->
+          <div class="card editing" style="left:60px;top:50px;">
+            <div class="card-body">
+              <div class="card-h1">배경 및 목적</div>
+              <div class="card-p">Tourmaline은 Markdown 문서를 캔버스 위의 카드로 시각화하는 도구입니다. Chrome 확장으로 포팅하여 더 넓은 환경에서 사용할 수 있도록 합니다.<span class="edit-cursor"></span></div>
+              <span class="card-tag"># 배경</span>
+            </div>
+          </div>
+
+          <!-- Card 2 -->
+          <div class="card" style="left:410px;top:50px;">
+            <div class="card-body">
+              <div class="card-h2">문제 정의</div>
+              <div class="card-p">기존 Markdown 편집기는 문서 구조를 선형으로만 표현합니다. 복잡한 문서일수록 전체 구조 파악이 어렵습니다.</div>
+              <span class="card-tag green"># 문제</span>
+            </div>
+          </div>
+
+          <!-- Card 3 -->
+          <div class="card" style="left:410px;top:230px;">
+            <div class="card-body">
+              <div class="card-h2">현재 상태</div>
+              <div class="card-p">Obsidian 플러그인으로 구현된 핵심 캔버스 경험이 존재합니다. Chrome 포팅을 통해 독립 확장으로 제공할 예정입니다.</div>
+            </div>
+          </div>
+
+          <!-- Card 4 -->
+          <div class="card" style="left:60px;top:300px;width:270px;">
+            <div class="card-body">
+              <div class="card-h2">기술 스택</div>
+              <div class="card-p">TypeScript · Manifest V3<br>IndexedDB · File System Access API</div>
+            </div>
+          </div>
+
+          <!-- Orphan: no border, no background -->
+          <div class="orphan" style="left:430px;top:410px;">
+            <div class="orphan-label">참고 자료</div>
+            <div class="orphan-line">— Obsidian 플러그인 API</div>
+            <div class="orphan-line">— Chrome Extensions Docs</div>
+            <div class="orphan-line">— File System Access API</div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Annotations -->
+      <div class="anno bottom" style="left:120px;top:8px;">클릭 → 인라인 편집</div>
+      <div class="anno right" style="left:8px;top:294px;">패널 폭 드래그 조정</div>
+    </div>
+
+  </div>
+
+  <!-- STATUS BAR -->
+  <div class="statusbar">
+    <div class="status-dot"></div>
+    <span>저장됨</span>
+    <span>·</span>
+    <span>프로젝트 설계.md</span>
+    <span>·</span>
+    <span>5개 섹션</span>
+    <span style="flex:1"></span>
+    <span>줌: 75%</span>
+  </div>
+
+</div>
+
+</body>
+</html>
