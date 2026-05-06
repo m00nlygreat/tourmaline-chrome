@@ -261,6 +261,7 @@ button { cursor: pointer; }
 .editing .editable-card-body { cursor: text; }
 .editable-card-body .ProseMirror {
   outline: 0;
+  overflow-x: auto;
 }
 .editable-card-body .ProseMirror > :last-child {
   margin-bottom: 0;
@@ -281,7 +282,7 @@ button { cursor: pointer; }
   border-collapse: collapse;
   font-size: 12px;
   color: #6a5a5e;
-  table-layout: fixed;
+  table-layout: auto;
 }
 .card th,
 .card td {
