@@ -8,7 +8,7 @@ const docs = resolve(root, "docs");
 
 await rm(docs, { recursive: true, force: true });
 await mkdir(docs, { recursive: true });
-await cp(resolve(root, "src", "app", "app.html"), resolve(docs, "app.html"));
+await cp(resolve(root, "src", "app", "index.html"), resolve(docs, "index.html"));
 await cp(resolve(root, "src", "app", "app.css"), resolve(docs, "app.css"));
 await cp(resolve(root, "src", "extension"), docs, { recursive: true });
 await build({
