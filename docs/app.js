@@ -31888,7 +31888,6 @@ ${markdownRows.join("\n")}
   }
   function bindEvents() {
     document.querySelector("#open-file").addEventListener("click", openMarkdownFile);
-    document.querySelector("#open-folder").addEventListener("click", openFolder);
     document.querySelector("#save-file").addEventListener("click", saveMarkdownFile);
     document.querySelector("#zoom-in").addEventListener("click", () => setZoom(state.zoom + 0.1, getViewportAnchor()));
     document.querySelector("#zoom-out").addEventListener("click", () => setZoom(state.zoom - 0.1, getViewportAnchor()));
@@ -31973,17 +31972,6 @@ ${markdownRows.join("\n")}
     await loadLayout();
     await reparseAndRender();
     setStatus(`Opened ${file.name}`);
-  }
-  async function openFolder() {
-    if (!window.showDirectoryPicker) {
-      setStatus("Folder access is not available in this browser.");
-      return;
-    }
-    state.directoryHandle = await window.showDirectoryPicker();
-    await persistHandles();
-    clearLocalImageUrls();
-    await reparseAndRender();
-    setStatus("Folder linked for relative image embeds.");
   }
   async function saveMarkdownFile() {
     try {
