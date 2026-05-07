@@ -3,6 +3,13 @@ chrome.action.onClicked.addListener(() => {
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "tourmaline-read-markdown-url") {
+    readMarkdownUrl(message).then(sendResponse, (error) => {
+      sendResponse({ ok: false, error: error.message });
+    });
+    return true;
+  }
+
   if (message?.type !== "tourmaline-download-markdown") return false;
 
   downloadMarkdown(message).then(sendResponse, (error) => {
@@ -10,6 +17,23 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   });
   return true;
 });
+
+async function readMarkdownUrl(message) {
+  const url = String(message.url ?? "");
+  if (!/^(file|https?):\/\//i.test(url)) {
+    throw new Error("Only file://, http://, and https:// Markdown URLs can be read.");
+  }
+  if (!/\.(md|markdown)([#?].*)?$/i.test(url)) {
+    throw new Error("Only Markdown files can be read.");
+  }
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return {
+    ok: true,
+    markdown: await response.text(),
+    url: response.url || url
+  };
+}
 
 async function downloadMarkdown(message) {
   const filename = getMarkdownFileName(message.fileName, message.sourceUrl);

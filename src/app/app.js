@@ -158,6 +158,7 @@ const state = {
   directoryHandle: null,
   fileName: "Untitled.md",
   documentKey: "sample:untitled",
+  documentStack: [],
   parsed: null,
   selectedId: null,
   editingItemId: null,
@@ -320,6 +321,7 @@ async function loadMarkdownFromContentScript() {
   state.fileName = getMarkdownFileName(file.fileName, file.fileUrl);
   state.markdown = await getContentScriptMarkdown(file);
   state.documentKey = `url:${file.fileUrl}`;
+  state.documentStack = [];
   state.hasInitialFit = false;
   setStatus(`Opened ${file.fileUrl} (${state.markdown.length} chars)`);
   return true;
@@ -362,6 +364,7 @@ async function loadMarkdownFromUrlParam() {
     state.fileName = decodeURIComponent(url.pathname.split(/[\\/]/).filter(Boolean).pop() || "Markdown.md");
     state.markdown = await response.text();
     state.documentKey = `url:${url.href}`;
+    state.documentStack = [];
     state.hasInitialFit = false;
     setStatus(`Opened ${url.href}`);
     return true;
@@ -391,6 +394,7 @@ async function loadFromFileHandle(handle) {
   state.fileName = file.name;
   state.markdown = await file.text();
   state.documentKey = getDocumentIdentity(file);
+  state.documentStack = [];
   state.hasInitialFit = false;
   await persistHandles();
   await loadLayout();
@@ -1002,12 +1006,209 @@ function renderShell() {
 
 function renderBreadcrumbs() {
   els.breadcrumbs.replaceChildren();
+  state.documentStack.forEach((entry, index) => {
+    els.breadcrumbs.append(button("breadcrumb", entry.fileName || "Document", () => restoreDocumentFromTrail(index)));
+    els.breadcrumbs.append(span("breadcrumb-sep", "/"));
+  });
   state.scopeStack.forEach((scopeId, index) => {
     const scope = state.parsed.scopes[scopeId];
     const label = index === 0 ? state.fileName : scope?.title ?? "Scope";
     els.breadcrumbs.append(button(`breadcrumb ${index === state.scopeStack.length - 1 ? "current" : ""}`, label, () => enterScope(scopeId, index)));
     if (index < state.scopeStack.length - 1) els.breadcrumbs.append(span("breadcrumb-sep", "/"));
   });
+}
+
+async function navigateToReference(rawTarget, source = "link") {
+  const target = normalizeReferenceTarget(rawTarget);
+  if (!target) return false;
+  if (/^https?:/i.test(target)) {
+    window.open(target, "_blank", "noopener,noreferrer");
+    return true;
+  }
+
+  if (isMarkdownTarget(target) && !isCurrentMarkdownTarget(target)) {
+    return loadLinkedMarkdownDocument(target, source);
+  }
+
+  const scope = resolveReferenceScope(target);
+  if (scope) {
+    await enterScope(scope.id);
+    setStatus(`Opened ${source}: ${scope.title}`);
+    return true;
+  }
+
+  setStatus(`Could not enter ${source}: ${target}`);
+  return false;
+}
+
+async function loadLinkedMarkdownDocument(target, source = "link") {
+  const url = resolveReferenceUrl(target);
+  if (!url) {
+    setStatus(`Could not resolve ${source}: ${target}`);
+    return false;
+  }
+
+  const markdownUrl = stripUrlSubpath(url);
+  const subpath = url.hash ? decodeURIComponent(url.hash.slice(1)) : "";
+  try {
+    flushActiveEditor({ reparse: false });
+    await saveLayout();
+    const markdown = await readMarkdownUrl(markdownUrl.href);
+    state.documentStack.push(createDocumentSnapshot());
+    state.fileHandle = null;
+    state.directoryHandle = null;
+    state.fileName = getMarkdownFileName("", markdownUrl.href);
+    state.markdown = markdown;
+    state.documentKey = `url:${markdownUrl.href}`;
+    state.currentScopeId = "scope:root";
+    state.scopeStack = ["scope:root"];
+    state.selectedId = null;
+    state.editingItemId = null;
+    state.hasInitialFit = false;
+    await loadPersistedHandles();
+    await loadLayout();
+    await reparseAndRender();
+    if (subpath) await enterResolvedSubpath(subpath, source);
+    setStatus(`Opened ${source}: ${state.fileName}`);
+    return true;
+  } catch (error) {
+    setStatus(`Could not open ${source}: ${target} (${error.message})`);
+    return false;
+  }
+}
+
+async function readMarkdownUrl(url) {
+  if (canUseExtensionRuntime()) {
+    const response = await sendExtensionMessage({
+      type: "tourmaline-read-markdown-url",
+      url
+    });
+    if (response?.ok) return String(response.markdown ?? "");
+    throw new Error(response?.error || "Extension could not read the Markdown file.");
+  }
+
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return await response.text();
+}
+
+function createDocumentSnapshot() {
+  return {
+    markdown: state.markdown,
+    fileName: state.fileName,
+    documentKey: state.documentKey,
+    fileHandle: state.fileHandle,
+    directoryHandle: state.directoryHandle,
+    currentScopeId: state.currentScopeId,
+    scopeStack: [...state.scopeStack],
+    selectedId: state.selectedId
+  };
+}
+
+async function restoreDocumentFromTrail(index) {
+  const snapshot = state.documentStack[index];
+  if (!snapshot) return;
+  flushActiveEditor({ reparse: false });
+  await saveLayout();
+  state.documentStack = state.documentStack.slice(0, index);
+  await restoreDocumentSnapshot(snapshot);
+}
+
+async function restoreDocumentSnapshot(snapshot) {
+  state.markdown = snapshot.markdown;
+  state.fileName = snapshot.fileName;
+  state.documentKey = snapshot.documentKey;
+  state.fileHandle = snapshot.fileHandle ?? null;
+  state.directoryHandle = snapshot.directoryHandle ?? null;
+  state.currentScopeId = snapshot.currentScopeId || "scope:root";
+  state.scopeStack = snapshot.scopeStack?.length ? [...snapshot.scopeStack] : ["scope:root"];
+  state.selectedId = snapshot.selectedId ?? null;
+  state.editingItemId = null;
+  state.hasInitialFit = false;
+  await loadLayout();
+  await reparseAndRender();
+}
+
+async function enterResolvedSubpath(subpath, source) {
+  const scope = resolveReferenceScope(`#${subpath}`);
+  if (!scope) {
+    setStatus(`Opened ${source}, but could not find #${subpath}`);
+    return false;
+  }
+  await enterScope(scope.id);
+  return true;
+}
+
+function normalizeReferenceTarget(rawTarget) {
+  let target = String(rawTarget ?? "").trim();
+  if (!target) return "";
+  if ((target.startsWith("<") && target.endsWith(">")) || (target.startsWith("[[") && target.endsWith("]]"))) {
+    target = target.slice(target.startsWith("[[") ? 2 : 1, target.endsWith("]]") ? -2 : -1);
+  }
+  target = target.split("|")[0].trim();
+  try {
+    target = decodeURIComponent(target);
+  } catch {
+    // Keep the original target when it contains non-URI markdown text.
+  }
+  return target;
+}
+
+function resolveReferenceScope(target) {
+  if (!state.parsed?.scopes) return null;
+  const subpath = getReferenceSubpath(target);
+  if (!subpath) return null;
+  const normalizedSubpath = normalizeReferenceName(subpath);
+  return Object.values(state.parsed.scopes).find((scope) =>
+    scope.id !== "scope:root" && (
+      normalizeReferenceName(scope.title) === normalizedSubpath ||
+      slugSafe(scope.title) === normalizedSubpath
+    )
+  ) ?? null;
+}
+
+function getReferenceSubpath(target) {
+  const hashIndex = target.indexOf("#");
+  if (hashIndex !== -1) {
+    const fileTarget = target.slice(0, hashIndex).trim();
+    return isCurrentMarkdownTarget(fileTarget) ? target.slice(hashIndex + 1).trim() : null;
+  }
+  if (isCurrentMarkdownTarget(target)) return "";
+  return target.trim();
+}
+
+function resolveReferenceUrl(target) {
+  try {
+    return new URL(target, getCurrentUrlDocumentSource() || location.href);
+  } catch {
+    return null;
+  }
+}
+
+function stripUrlSubpath(url) {
+  const nextUrl = new URL(url.href);
+  nextUrl.hash = "";
+  return nextUrl;
+}
+
+function isCurrentMarkdownTarget(target) {
+  const cleanTarget = target.split("#")[0].split("?")[0].replace(/\\/g, "/").trim();
+  if (!cleanTarget) return true;
+  const targetName = cleanTarget.split("/").filter(Boolean).pop();
+  return Boolean(targetName && targetName.toLowerCase() === state.fileName.toLowerCase());
+}
+
+function isMarkdownTarget(target) {
+  const cleanTarget = target.split("#")[0].split("?")[0];
+  return /\.(md|markdown)$/i.test(cleanTarget);
+}
+
+function normalizeReferenceName(value) {
+  return String(value ?? "")
+    .trim()
+    .replace(/^#+/, "")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
 }
 
 function renderLayers() {
@@ -1023,6 +1224,10 @@ function renderLayerNode(node) {
   const isExpanded = !hasChildren || state.expandedLayerIds.has(node.id);
   const row = button(`layer-row ${hasChildren ? "drillable" : ""} ${node.id === state.selectedId ? "selected" : ""}`, "", (event) => {
     selectItem(node.id, { revealOnCanvas: true });
+    if ((event.ctrlKey || event.metaKey) && node.kind === "embed") {
+      navigateToReference(node.target, "embed");
+      return;
+    }
     if ((event.ctrlKey || event.metaKey) && node.childScopeId) {
       enterScope(node.childScopeId);
       return;
@@ -1205,6 +1410,12 @@ async function renderCanvas() {
     bindCardDrag(el, item.id);
     el.addEventListener("click", (event) => {
       event.stopPropagation();
+      const link = getEventLink(event);
+      if (link && (event.ctrlKey || event.metaKey || !isEditingItem(item.id))) {
+        event.preventDefault();
+        navigateToReference(link.getAttribute("href"), "link");
+        return;
+      }
       if ((event.ctrlKey || event.metaKey) && item.childScopeId) {
         event.preventDefault();
         enterScope(item.childScopeId);
@@ -1252,6 +1463,8 @@ async function renderEmbedHtml(embed) {
 
 async function resolveImageSource(target) {
   if (/^(https?:|data:|blob:)/i.test(target)) return target;
+  const url = resolveReferenceUrl(target);
+  if (url && /^(file|https?):$/i.test(url.protocol)) return url.href;
   if (!state.directoryHandle) return null;
   try {
     const parts = target.split(/[\\/]/).filter(Boolean);
@@ -1271,13 +1484,11 @@ function decorateEmbeds() {
   els.stage.querySelectorAll(".selectable-embed").forEach((element) => {
     element.addEventListener("pointerdown", (event) => {
       if (state.isSpacePressed || event.button !== 0) return;
-      if (!isEditingItem(element.dataset.ownerId)) return;
       event.preventDefault();
       event.stopPropagation();
       selectItem(element.dataset.embedId || element.dataset.itemId);
     }, true);
     element.addEventListener("click", (event) => {
-      if (!isEditingItem(element.dataset.ownerId)) return;
       event.stopPropagation();
       if (event.ctrlKey || event.metaKey) {
         event.preventDefault();
@@ -1287,7 +1498,7 @@ function decorateEmbeds() {
     element.addEventListener("dblclick", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      enterEditMode(element.dataset.ownerId, event);
+      openEmbedTarget(element.dataset.embedId);
     }, true);
   });
   els.stage.querySelectorAll("img").forEach((image) => {
@@ -1474,11 +1685,7 @@ function findEmbedById(id) {
 function openEmbedTarget(id) {
   const embed = findEmbedById(id);
   if (!embed) return;
-  if (/^https?:/i.test(embed.target)) {
-    window.open(embed.target, "_blank", "noopener,noreferrer");
-    return;
-  }
-  setStatus(`Embed target: ${embed.target}`);
+  navigateToReference(embed.target, "embed");
 }
 
 function selectItem(id, options = {}) {
@@ -2129,6 +2336,10 @@ function isTypingTarget(target) {
 
 function isInteractiveTarget(target) {
   return target instanceof Element && Boolean(target.closest("a, button, input, textarea, select, summary, [contenteditable='true'], .selectable-embed"));
+}
+
+function getEventLink(event) {
+  return event.target instanceof Element ? event.target.closest("a[href]") : null;
 }
 
 function embedSvg() {
