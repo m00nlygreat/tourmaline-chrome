@@ -1,9 +1,27 @@
 (() => {
+  const markdownContentTypes = new Set([
+    "text/markdown",
+    "text/x-markdown",
+    "text/plain"
+  ]);
+
+  function shouldBootstrap() {
+    if (location.protocol === "file:") return true;
+    if (!/^https?:$/.test(location.protocol)) return false;
+    return markdownContentTypes.has((document.contentType || "").toLowerCase());
+  }
+
+  if (!shouldBootstrap()) return;
+
   const fileUrl = location.href;
   const fileName = decodeURIComponent(
     new URL(fileUrl).pathname.split(/[\\/]/).filter(Boolean).pop() || "Markdown.md"
   );
-  const markdown = document.body?.innerText || document.documentElement.textContent || "";
+  const markdown =
+    document.body?.querySelector("pre")?.textContent
+    || document.body?.textContent
+    || document.documentElement.textContent
+    || "";
 
   window.__TOURMALINE_FILE__ = {
     markdown,

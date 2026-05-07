@@ -6907,7 +6907,7 @@
   var gecko = !ie && /gecko\/(\d+)/i.test(agent);
   gecko && +(/Firefox\/(\d+)/.exec(agent) || [0, 0])[1];
   var _chrome = !ie && /Chrome\/(\d+)/.exec(agent);
-  var chrome = !!_chrome;
+  var chrome2 = !!_chrome;
   var chrome_version = _chrome ? +_chrome[1] : 0;
   var safari = !ie && !!nav && /Apple Computer/.test(nav.vendor);
   var ios = safari && (/Mobile\/\w+/.test(agent) || !!nav && nav.maxTouchPoints > 2);
@@ -8540,7 +8540,7 @@
       }
       if (!lastChild || // Empty textblock
       !(lastChild instanceof TextViewDesc) || /\n$/.test(lastChild.node.text) || this.view.requiresGeckoHackNode && /\s$/.test(lastChild.node.text)) {
-        if ((safari || chrome) && lastChild && lastChild.dom.contentEditable == "false")
+        if ((safari || chrome2) && lastChild && lastChild.dom.contentEditable == "false")
           this.addHackNode("IMG", parent);
         this.addHackNode("BR", this.top);
       }
@@ -8779,7 +8779,7 @@
     syncNodeSelection(view, sel);
     if (!editorOwnsSelection(view))
       return;
-    if (!force && view.input.mouseDown && view.input.mouseDown.allowDefault && chrome) {
+    if (!force && view.input.mouseDown && view.input.mouseDown.allowDefault && chrome2) {
       let domSel = view.domSelectionRange(), curSel = view.domObserver.currentSelection;
       if (domSel.anchorNode && curSel.anchorNode && isEquivalentPosition(domSel.anchorNode, domSel.anchorOffset, curSel.anchorNode, curSel.anchorOffset)) {
         view.input.mouseDown.delayedSelectionSync = true;
@@ -8816,7 +8816,7 @@
     view.domObserver.setCurSelection();
     view.domObserver.connectSelection();
   }
-  var brokenSelectBetweenUneditable = safari || chrome && chrome_version < 63;
+  var brokenSelectBetweenUneditable = safari || chrome2 && chrome_version < 63;
   function temporarilyEditableNear(view, pos) {
     let { node, offset } = view.docView.domFromPos(pos, 0);
     let after = offset < node.childNodes.length ? node.childNodes[offset] : null;
@@ -9132,7 +9132,7 @@
   }
   function findDirection(view, pos) {
     let $pos = view.state.doc.resolve(pos);
-    if (!(chrome || windows) && $pos.parent.inlineContent) {
+    if (!(chrome2 || windows) && $pos.parent.inlineContent) {
       let coords = view.coordsAtPos(pos);
       if (pos > $pos.start()) {
         let before = view.coordsAtPos(pos - 1);
@@ -9460,7 +9460,7 @@
     return elt;
   }
   function restoreReplacedSpaces(dom) {
-    let nodes = dom.querySelectorAll(chrome ? "span:not([class]):not([style])" : "span.Apple-converted-space");
+    let nodes = dom.querySelectorAll(chrome2 ? "span:not([class]):not([style])" : "span.Apple-converted-space");
     for (let i = 0; i < nodes.length; i++) {
       let node = nodes[i];
       if (node.childNodes.length == 1 && node.textContent == "\xA0" && node.parentNode)
@@ -9574,7 +9574,7 @@
       return;
     view.input.lastKeyCode = event.keyCode;
     view.input.lastKeyCodeTime = Date.now();
-    if (android && chrome && event.keyCode == 13)
+    if (android && chrome2 && event.keyCode == 13)
       return;
     if (event.keyCode != 229)
       view.domObserver.forceFlush();
@@ -9818,7 +9818,7 @@
       // (hidden) cursor is doesn't change the selection, and
       // thus doesn't get a reaction from ProseMirror. This
       // works around that.
-      chrome && !this.view.state.selection.visible && Math.min(Math.abs(pos.pos - this.view.state.selection.from), Math.abs(pos.pos - this.view.state.selection.to)) <= 2)) {
+      chrome2 && !this.view.state.selection.visible && Math.min(Math.abs(pos.pos - this.view.state.selection.from), Math.abs(pos.pos - this.view.state.selection.to)) <= 2)) {
         updateSelection(this.view, Selection.near(this.view.state.doc.resolve(pos.pos)), "pointer");
         event.preventDefault();
       } else {
@@ -9860,7 +9860,7 @@
     if (!view.composing) {
       view.domObserver.flush();
       let { state: state2 } = view, $pos = state2.selection.$to;
-      if (state2.selection instanceof TextSelection && (state2.storedMarks || !$pos.textOffset && $pos.parentOffset && $pos.nodeBefore.marks.some((m) => m.type.spec.inclusive === false) || chrome && windows && selectionBeforeUneditable(view))) {
+      if (state2.selection instanceof TextSelection && (state2.storedMarks || !$pos.textOffset && $pos.parentOffset && $pos.nodeBefore.marks.some((m) => m.type.spec.inclusive === false) || chrome2 && windows && selectionBeforeUneditable(view))) {
         view.markCursor = view.state.storedMarks || $pos.marks();
         endComposition(view, true);
         view.markCursor = null;
@@ -10087,7 +10087,7 @@
     }
     let draggedSlice = (node || view.state.selection).content();
     let { dom, text: text2, slice: slice2 } = serializeForClipboard(view, draggedSlice);
-    if (!event.dataTransfer.files.length || !chrome || chrome_version > 120)
+    if (!event.dataTransfer.files.length || !chrome2 || chrome_version > 120)
       event.dataTransfer.clearData();
     event.dataTransfer.setData(brokenClipboardAPI ? "Text" : "text/html", dom.innerHTML);
     event.dataTransfer.effectAllowed = "copyMove";
@@ -10190,7 +10190,7 @@
   };
   handlers.beforeinput = (view, _event) => {
     let event = _event;
-    if (chrome && android && event.inputType == "deleteContentBackward") {
+    if (chrome2 && android && event.inputType == "deleteContentBackward") {
       view.domObserver.flushSoon();
       let { domChangeCount } = view.input;
       setTimeout(() => {
@@ -11185,7 +11185,7 @@
       if (!selectionCollapsed(domSel))
         find2.push({ node: domSel.focusNode, offset: domSel.focusOffset });
     }
-    if (chrome && view.input.lastKeyCode === 8) {
+    if (chrome2 && view.input.lastKeyCode === 8) {
       for (let off = toOffset; off > fromOffset; off--) {
         let node = parent.childNodes[off - 1], desc = node.pmViewDesc;
         if (node.nodeName == "BR" && !desc) {
@@ -11243,7 +11243,7 @@
       let origin = view.input.lastSelectionTime > Date.now() - 50 ? view.input.lastSelectionOrigin : null;
       let newSel = selectionFromDOM(view, origin);
       if (newSel && !view.state.selection.eq(newSel)) {
-        if (chrome && android && view.input.lastKeyCode === 13 && Date.now() - 100 < view.input.lastKeyCodeTime && view.someProp("handleKeyDown", (f) => f(view, keyEvent(13, "Enter"))))
+        if (chrome2 && android && view.input.lastKeyCode === 13 && Date.now() - 100 < view.input.lastKeyCodeTime && view.someProp("handleKeyDown", (f) => f(view, keyEvent(13, "Enter"))))
           return;
         let tr2 = view.state.tr.setSelection(newSel);
         if (origin == "pointer")
@@ -11317,11 +11317,11 @@
       return;
     }
     if (view.state.selection.anchor > change.start && looksLikeBackspace(doc3, change.start, change.endA, $from, $to) && view.someProp("handleKeyDown", (f) => f(view, keyEvent(8, "Backspace")))) {
-      if (android && chrome)
+      if (android && chrome2)
         view.domObserver.suppressSelectionUpdates();
       return;
     }
-    if (chrome && change.endB == change.start)
+    if (chrome2 && change.endB == change.start)
       view.input.lastChromeDelete = Date.now();
     if (android && !inlineChange && $from.start() != $to.start() && $to.parentOffset == 0 && $from.depth == $to.depth && parse.sel && parse.sel.anchor == parse.sel.head && parse.sel.head == change.endA) {
       change.endB -= 2;
@@ -11337,7 +11337,7 @@
       let tr2 = base3 || view.state.tr.replace(chFrom, chTo, parse.doc.slice(change.start - parse.from, change.endB - parse.from));
       if (parse.sel) {
         let sel2 = resolveSelection(view, tr2.doc, parse.sel);
-        if (sel2 && !(chrome && view.composing && sel2.empty && (change.start != change.endB || view.input.lastChromeDelete < Date.now() - 100) && (sel2.head == chFrom || sel2.head == tr2.mapping.map(chTo) - 1) || ie && sel2.empty && sel2.head == chFrom))
+        if (sel2 && !(chrome2 && view.composing && sel2.empty && (change.start != change.endB || view.input.lastChromeDelete < Date.now() - 100) && (sel2.head == chFrom || sel2.head == tr2.mapping.map(chTo) - 1) || ie && sel2.empty && sel2.head == chFrom))
           tr2.setSelection(sel2);
       }
       if (compositionID)
@@ -11604,9 +11604,9 @@
       let oldScrollPos = scroll == "preserve" && updateSel && this.dom.style.overflowAnchor == null && storeScrollPos(this);
       if (updateSel) {
         this.domObserver.stop();
-        let forceSelUpdate = updateDoc && (ie || chrome) && !this.composing && !prev.selection.empty && !state2.selection.empty && selectionContextChanged(prev.selection, state2.selection);
+        let forceSelUpdate = updateDoc && (ie || chrome2) && !this.composing && !prev.selection.empty && !state2.selection.empty && selectionContextChanged(prev.selection, state2.selection);
         if (updateDoc) {
-          let chromeKludge = chrome ? this.trackWrites = this.domSelectionRange().focusNode : null;
+          let chromeKludge = chrome2 ? this.trackWrites = this.domSelectionRange().focusNode : null;
           if (this.composing)
             this.input.compositionNode = findCompositionNode(this);
           if (redraw || !this.docView.update(state2.doc, outerDeco, innerDeco, this)) {
@@ -31834,9 +31834,18 @@ ${markdownRows.join("\n")}
     layerCollapse: document.querySelector("#layer-collapse")
   };
   var db = {
+    unavailableReason: null,
     open() {
+      if (this.unavailableReason) return Promise.resolve(null);
       return new Promise((resolve, reject) => {
-        const request = indexedDB.open("tourmaline-chrome", 2);
+        let request;
+        try {
+          request = indexedDB.open("tourmaline-chrome", 2);
+        } catch (error2) {
+          this.unavailableReason = error2.message;
+          resolve(null);
+          return;
+        }
         request.onupgradeneeded = () => {
           const stores = request.result.objectStoreNames;
           if (!stores.contains("layouts")) request.result.createObjectStore("layouts");
@@ -31844,36 +31853,53 @@ ${markdownRows.join("\n")}
           if (!stores.contains("handles")) request.result.createObjectStore("handles");
         };
         request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
+        request.onerror = () => {
+          this.unavailableReason = request.error?.message || "IndexedDB is unavailable.";
+          resolve(null);
+        };
       });
     },
     async get(store, key) {
-      const database = await this.open();
-      return new Promise((resolve, reject) => {
-        const tx = database.transaction(store, "readonly");
-        const request = tx.objectStore(store).get(key);
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-        tx.oncomplete = () => database.close();
-      });
+      try {
+        const database = await this.open();
+        if (!database) return null;
+        return await new Promise((resolve, reject) => {
+          const tx = database.transaction(store, "readonly");
+          const request = tx.objectStore(store).get(key);
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+          tx.oncomplete = () => database.close();
+        });
+      } catch (error2) {
+        this.unavailableReason = error2.message;
+        return null;
+      }
     },
     async set(store, key, value) {
-      const database = await this.open();
-      return new Promise((resolve, reject) => {
-        const tx = database.transaction(store, "readwrite");
-        tx.objectStore(store).put(value, key);
-        tx.oncomplete = () => {
-          database.close();
-          resolve();
-        };
-        tx.onerror = () => reject(tx.error);
-      });
+      try {
+        const database = await this.open();
+        if (!database) return false;
+        return await new Promise((resolve, reject) => {
+          const tx = database.transaction(store, "readwrite");
+          tx.objectStore(store).put(value, key);
+          tx.oncomplete = () => {
+            database.close();
+            resolve(true);
+          };
+          tx.onerror = () => reject(tx.error);
+        });
+      } catch (error2) {
+        this.unavailableReason = error2.message;
+        return false;
+      }
     }
   };
-  init2();
+  if (els.workspace && els.stage && document.querySelector("#open-file")) {
+    init2();
+  }
   async function init2() {
     bindEvents();
-    const loadedFromContentScript = loadMarkdownFromContentScript();
+    const loadedFromContentScript = await loadMarkdownFromContentScript();
     const loadedFromUrl = loadedFromContentScript ? false : await loadMarkdownFromUrlParam();
     if (!loadedFromContentScript && !loadedFromUrl) {
       await loadPersistedSample();
@@ -31911,16 +31937,30 @@ ${markdownRows.join("\n")}
       state.markdown = saved.markdown;
     }
   }
-  function loadMarkdownFromContentScript() {
+  async function loadMarkdownFromContentScript() {
     const file = window.__TOURMALINE_FILE__;
     if (!file?.fileUrl) return false;
     state.fileHandle = null;
-    state.fileName = file.fileName || "Markdown.md";
-    state.markdown = file.markdown || "";
+    state.fileName = getMarkdownFileName(file.fileName, file.fileUrl);
+    state.markdown = await getContentScriptMarkdown(file);
     state.documentKey = `url:${file.fileUrl}`;
     state.hasInitialFit = false;
-    setStatus(`Opened ${file.fileUrl}`);
+    setStatus(`Opened ${file.fileUrl} (${state.markdown.length} chars)`);
     return true;
+  }
+  async function getContentScriptMarkdown(file) {
+    const markdown = file.markdown || "";
+    if (markdown.trim()) return markdown;
+    try {
+      const url = new URL(file.fileUrl);
+      if (!/^https?:$/.test(url.protocol)) return markdown;
+      const response = await fetch(url.href, { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return await response.text();
+    } catch (error2) {
+      setStatus(`Could not read Markdown URL: ${error2.message}`);
+      return markdown;
+    }
   }
   async function loadMarkdownFromUrlParam() {
     const params = new URLSearchParams(location.search);
@@ -31976,6 +32016,11 @@ ${markdownRows.join("\n")}
   async function saveMarkdownFile() {
     try {
       flushActiveEditor({ reparse: false });
+      if (shouldDownloadOnSave()) {
+        const filename = await downloadMarkdownWithExtension();
+        setStatus(`Downloaded ${filename}.`);
+        return;
+      }
       if (!state.fileHandle) {
         if (state.directoryHandle) {
           const handle2 = await state.directoryHandle.getFileHandle(state.fileName || "Untitled.md", { create: true });
@@ -31997,13 +32042,22 @@ ${markdownRows.join("\n")}
           return;
         }
         await db.set("documents", state.documentKey, { markdown: state.markdown, updatedAt: Date.now() });
-        downloadMarkdownFallback();
+        await downloadMarkdownFallback();
         setStatus("Saved a browser copy and downloaded the Markdown file.");
         return;
       }
       if (await writeMarkdownToFileHandle(state.fileHandle)) setStatus(`Saved ${state.fileName}`);
     } catch (error2) {
       setStatus(`Save failed: ${error2.message}`);
+    }
+  }
+  function shouldDownloadOnSave() {
+    if (state.fileHandle || state.directoryHandle) return false;
+    if (!state.documentKey.startsWith("url:")) return false;
+    try {
+      return /^https?:$/.test(new URL(state.documentKey.slice(4)).protocol);
+    } catch {
+      return false;
     }
   }
   async function requestSaveFileHandle() {
@@ -32031,14 +32085,71 @@ ${markdownRows.join("\n")}
     await writable.close();
     return true;
   }
-  function downloadMarkdownFallback() {
+  async function downloadMarkdownFallback() {
+    const filename = getMarkdownFileName(state.fileName, getCurrentUrlDocumentSource());
+    if (canUseExtensionRuntime()) return Boolean(await downloadMarkdownWithExtension(filename));
+    return downloadMarkdownViaAnchor(filename);
+  }
+  async function downloadMarkdownWithExtension(filename = getMarkdownFileName(state.fileName, getCurrentUrlDocumentSource())) {
+    if (!canUseExtensionRuntime()) {
+      throw new Error("Extension download API is unavailable in this page.");
+    }
+    const response = await sendExtensionMessage({
+      type: "tourmaline-download-markdown",
+      fileName: filename,
+      sourceUrl: getCurrentUrlDocumentSource(),
+      markdown: state.markdown
+    });
+    if (response?.ok && response.filename) return response.filename;
+    throw new Error(response?.error || "Extension download did not complete.");
+  }
+  function canUseExtensionRuntime() {
+    return typeof chrome !== "undefined" && Boolean(chrome.runtime?.sendMessage);
+  }
+  function sendExtensionMessage(message) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(message, (response) => {
+        const error2 = chrome.runtime.lastError;
+        if (error2) {
+          reject(new Error(error2.message));
+          return;
+        }
+        resolve(response);
+      });
+    });
+  }
+  function downloadMarkdownViaAnchor(filename) {
     const blob = new Blob([state.markdown], { type: "text/markdown;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link2 = document.createElement("a");
     link2.href = url;
-    link2.download = state.fileName || "Untitled.md";
+    link2.download = filename;
+    link2.style.display = "none";
+    document.body.append(link2);
     link2.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1e3);
+    setTimeout(() => {
+      link2.remove();
+      URL.revokeObjectURL(url);
+    }, 1e3);
+    return true;
+  }
+  function getCurrentUrlDocumentSource() {
+    return state.documentKey.startsWith("url:") ? state.documentKey.slice(4) : "";
+  }
+  function getMarkdownFileName(name, sourceUrl = "") {
+    const fallback = "Untitled.md";
+    const candidate = name || getFileNameFromUrl(sourceUrl) || fallback;
+    const clean = candidate.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").replace(/^\.+$/, fallback).trim() || fallback;
+    return /\.(md|markdown)$/i.test(clean) ? clean : `${clean}.md`;
+  }
+  function getFileNameFromUrl(sourceUrl) {
+    try {
+      const pathName = new URL(sourceUrl).pathname;
+      const name = decodeURIComponent(pathName.split(/[\\/]/).filter(Boolean).pop() || "");
+      return name || null;
+    } catch {
+      return null;
+    }
   }
   function getPickerStartIn() {
     return state.directoryHandle || "documents";
@@ -32152,6 +32263,7 @@ ${markdownRows.join("\n")}
     }
     renderShell();
     await renderCanvas();
+    setStatus(`Loaded ${state.fileName}: ${state.markdown.length} chars, ${state.parsed.items.length} items.`);
     scheduleLayoutSave();
     if (!state.hasInitialFit) {
       requestAnimationFrame(fitInitialViewport);

@@ -204,9 +204,18 @@ const els = {
 };
 
 const db = {
+  unavailableReason: null,
   open() {
+    if (this.unavailableReason) return Promise.resolve(null);
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open("tourmaline-chrome", 2);
+      let request;
+      try {
+        request = indexedDB.open("tourmaline-chrome", 2);
+      } catch (error) {
+        this.unavailableReason = error.message;
+        resolve(null);
+        return;
+      }
       request.onupgradeneeded = () => {
         const stores = request.result.objectStoreNames;
         if (!stores.contains("layouts")) request.result.createObjectStore("layouts");
@@ -214,38 +223,55 @@ const db = {
         if (!stores.contains("handles")) request.result.createObjectStore("handles");
       };
       request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
+      request.onerror = () => {
+        this.unavailableReason = request.error?.message || "IndexedDB is unavailable.";
+        resolve(null);
+      };
     });
   },
   async get(store, key) {
-    const database = await this.open();
-    return new Promise((resolve, reject) => {
-      const tx = database.transaction(store, "readonly");
-      const request = tx.objectStore(store).get(key);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-      tx.oncomplete = () => database.close();
-    });
+    try {
+      const database = await this.open();
+      if (!database) return null;
+      return await new Promise((resolve, reject) => {
+        const tx = database.transaction(store, "readonly");
+        const request = tx.objectStore(store).get(key);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+        tx.oncomplete = () => database.close();
+      });
+    } catch (error) {
+      this.unavailableReason = error.message;
+      return null;
+    }
   },
   async set(store, key, value) {
-    const database = await this.open();
-    return new Promise((resolve, reject) => {
-      const tx = database.transaction(store, "readwrite");
-      tx.objectStore(store).put(value, key);
-      tx.oncomplete = () => {
-        database.close();
-        resolve();
-      };
-      tx.onerror = () => reject(tx.error);
-    });
+    try {
+      const database = await this.open();
+      if (!database) return false;
+      return await new Promise((resolve, reject) => {
+        const tx = database.transaction(store, "readwrite");
+        tx.objectStore(store).put(value, key);
+        tx.oncomplete = () => {
+          database.close();
+          resolve(true);
+        };
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch (error) {
+      this.unavailableReason = error.message;
+      return false;
+    }
   }
 };
 
-init();
+if (els.workspace && els.stage && document.querySelector("#open-file")) {
+  init();
+}
 
 async function init() {
   bindEvents();
-  const loadedFromContentScript = loadMarkdownFromContentScript();
+  const loadedFromContentScript = await loadMarkdownFromContentScript();
   const loadedFromUrl = loadedFromContentScript ? false : await loadMarkdownFromUrlParam();
   if (!loadedFromContentScript && !loadedFromUrl) {
     await loadPersistedSample();
@@ -286,17 +312,33 @@ async function loadPersistedSample() {
   }
 }
 
-function loadMarkdownFromContentScript() {
+async function loadMarkdownFromContentScript() {
   const file = window.__TOURMALINE_FILE__;
   if (!file?.fileUrl) return false;
 
   state.fileHandle = null;
-  state.fileName = file.fileName || "Markdown.md";
-  state.markdown = file.markdown || "";
+  state.fileName = getMarkdownFileName(file.fileName, file.fileUrl);
+  state.markdown = await getContentScriptMarkdown(file);
   state.documentKey = `url:${file.fileUrl}`;
   state.hasInitialFit = false;
-  setStatus(`Opened ${file.fileUrl}`);
+  setStatus(`Opened ${file.fileUrl} (${state.markdown.length} chars)`);
   return true;
+}
+
+async function getContentScriptMarkdown(file) {
+  const markdown = file.markdown || "";
+  if (markdown.trim()) return markdown;
+
+  try {
+    const url = new URL(file.fileUrl);
+    if (!/^https?:$/.test(url.protocol)) return markdown;
+    const response = await fetch(url.href, { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.text();
+  } catch (error) {
+    setStatus(`Could not read Markdown URL: ${error.message}`);
+    return markdown;
+  }
 }
 
 async function loadMarkdownFromUrlParam() {
@@ -359,6 +401,11 @@ async function loadFromFileHandle(handle) {
 async function saveMarkdownFile() {
   try {
     flushActiveEditor({ reparse: false });
+    if (shouldDownloadOnSave()) {
+      const filename = await downloadMarkdownWithExtension();
+      setStatus(`Downloaded ${filename}.`);
+      return;
+    }
     if (!state.fileHandle) {
       if (state.directoryHandle) {
         const handle = await state.directoryHandle.getFileHandle(state.fileName || "Untitled.md", { create: true });
@@ -380,13 +427,23 @@ async function saveMarkdownFile() {
         return;
       }
       await db.set("documents", state.documentKey, { markdown: state.markdown, updatedAt: Date.now() });
-      downloadMarkdownFallback();
+      await downloadMarkdownFallback();
       setStatus("Saved a browser copy and downloaded the Markdown file.");
       return;
     }
     if (await writeMarkdownToFileHandle(state.fileHandle)) setStatus(`Saved ${state.fileName}`);
   } catch (error) {
     setStatus(`Save failed: ${error.message}`);
+  }
+}
+
+function shouldDownloadOnSave() {
+  if (state.fileHandle || state.directoryHandle) return false;
+  if (!state.documentKey.startsWith("url:")) return false;
+  try {
+    return /^https?:$/.test(new URL(state.documentKey.slice(4)).protocol);
+  } catch {
+    return false;
   }
 }
 
@@ -417,14 +474,79 @@ async function writeMarkdownToFileHandle(handle) {
   return true;
 }
 
-function downloadMarkdownFallback() {
+async function downloadMarkdownFallback() {
+  const filename = getMarkdownFileName(state.fileName, getCurrentUrlDocumentSource());
+  if (canUseExtensionRuntime()) return Boolean(await downloadMarkdownWithExtension(filename));
+
+  return downloadMarkdownViaAnchor(filename);
+}
+
+async function downloadMarkdownWithExtension(filename = getMarkdownFileName(state.fileName, getCurrentUrlDocumentSource())) {
+  if (!canUseExtensionRuntime()) {
+    throw new Error("Extension download API is unavailable in this page.");
+  }
+  const response = await sendExtensionMessage({
+    type: "tourmaline-download-markdown",
+    fileName: filename,
+    sourceUrl: getCurrentUrlDocumentSource(),
+    markdown: state.markdown
+  });
+  if (response?.ok && response.filename) return response.filename;
+  throw new Error(response?.error || "Extension download did not complete.");
+}
+
+function canUseExtensionRuntime() {
+  return typeof chrome !== "undefined" && Boolean(chrome.runtime?.sendMessage);
+}
+
+function sendExtensionMessage(message) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(message, (response) => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(new Error(error.message));
+        return;
+      }
+      resolve(response);
+    });
+  });
+}
+
+function downloadMarkdownViaAnchor(filename) {
   const blob = new Blob([state.markdown], { type: "text/markdown;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = state.fileName || "Untitled.md";
+  link.download = filename;
+  link.style.display = "none";
+  document.body.append(link);
   link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  setTimeout(() => {
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, 1000);
+  return true;
+}
+
+function getCurrentUrlDocumentSource() {
+  return state.documentKey.startsWith("url:") ? state.documentKey.slice(4) : "";
+}
+
+function getMarkdownFileName(name, sourceUrl = "") {
+  const fallback = "Untitled.md";
+  const candidate = name || getFileNameFromUrl(sourceUrl) || fallback;
+  const clean = candidate.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").replace(/^\.+$/, fallback).trim() || fallback;
+  return /\.(md|markdown)$/i.test(clean) ? clean : `${clean}.md`;
+}
+
+function getFileNameFromUrl(sourceUrl) {
+  try {
+    const pathName = new URL(sourceUrl).pathname;
+    const name = decodeURIComponent(pathName.split(/[\\/]/).filter(Boolean).pop() || "");
+    return name || null;
+  } catch {
+    return null;
+  }
 }
 
 function getPickerStartIn() {
@@ -551,6 +673,7 @@ async function reparseAndRender() {
   }
   renderShell();
   await renderCanvas();
+  setStatus(`Loaded ${state.fileName}: ${state.markdown.length} chars, ${state.parsed.items.length} items.`);
   scheduleLayoutSave();
   if (!state.hasInitialFit) {
     requestAnimationFrame(fitInitialViewport);
