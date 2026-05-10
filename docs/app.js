@@ -31818,6 +31818,9 @@ ${markdownRows.join("\n")}
     isInitializing: true,
     resolveInitialFile: null
   };
+  var fileDrop = {
+    depth: 0
+  };
   var els = {
     workspace: document.querySelector(".workspace"),
     canvasArea: document.querySelector("#canvas-area"),
@@ -31935,12 +31938,47 @@ ${markdownRows.join("\n")}
     bindCanvasPan();
     bindLayerResize();
     bindKeyboardShortcuts();
+    bindFileDrop();
     els.stageScroll.addEventListener("scroll", scheduleGridRender);
     new ResizeObserver(() => {
       enforceZoomBounds();
       normalizeViewportPresentation();
       scheduleGridRender();
     }).observe(els.canvasArea);
+  }
+  function bindFileDrop() {
+    window.addEventListener("dragenter", (event) => {
+      if (!hasDraggedFiles(event)) return;
+      event.preventDefault();
+      fileDrop.depth += 1;
+      document.body.classList.add("file-drag-over");
+    });
+    window.addEventListener("dragover", (event) => {
+      if (!hasDraggedFiles(event)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+    });
+    window.addEventListener("dragleave", (event) => {
+      if (!hasDraggedFiles(event)) return;
+      fileDrop.depth = Math.max(0, fileDrop.depth - 1);
+      if (fileDrop.depth === 0) document.body.classList.remove("file-drag-over");
+    });
+    window.addEventListener("drop", (event) => {
+      if (!hasDroppedFiles(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      fileDrop.depth = 0;
+      document.body.classList.remove("file-drag-over");
+      openDroppedMarkdown(event.dataTransfer).catch((error2) => {
+        setStatus(`Could not open dropped file: ${error2.message}`);
+      });
+    });
+  }
+  function hasDraggedFiles(event) {
+    return [...event.dataTransfer?.types || []].includes("Files");
+  }
+  function hasDroppedFiles(event) {
+    return hasDraggedFiles(event) && Boolean(event.dataTransfer?.items?.length || event.dataTransfer?.files?.length);
   }
   function bindLaunchQueue() {
     if (!("launchQueue" in window)) return;
@@ -32065,6 +32103,37 @@ ${markdownRows.join("\n")}
     await loadLayout();
     await reparseAndRender();
     setStatus(`Opened ${file.name}`);
+  }
+  async function openDroppedMarkdown(dataTransfer) {
+    const item = [...dataTransfer.items || []].find((candidate) => candidate.kind === "file");
+    const droppedFile = item?.getAsFile?.() || dataTransfer.files?.[0];
+    if (!droppedFile) return;
+    if (!isMarkdownFile(droppedFile.name, droppedFile.type)) {
+      setStatus("Drop a Markdown file to open it.");
+      return;
+    }
+    if (item && "getAsFileSystemHandle" in item) {
+      const handle = await item.getAsFileSystemHandle();
+      if (handle?.kind === "file") {
+        await loadFromFileHandle(handle);
+        return;
+      }
+    }
+    await loadFromFile(droppedFile);
+  }
+  async function loadFromFile(file) {
+    state.fileHandle = null;
+    state.fileName = file.name || "Markdown.md";
+    state.markdown = await file.text();
+    state.documentKey = getDocumentIdentity(file);
+    state.documentStack = [];
+    state.hasInitialFit = false;
+    await loadLayout();
+    await reparseAndRender();
+    setStatus(`Opened ${state.fileName}`);
+  }
+  function isMarkdownFile(name = "", type = "") {
+    return /\.(md|markdown)$/i.test(name) || /^text\/(x-)?markdown$/i.test(type);
   }
   async function saveMarkdownFile() {
     try {

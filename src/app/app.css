@@ -211,6 +211,21 @@ button { cursor: pointer; }
   background-color: var(--canvas);
   --grid-dot: rgba(116, 104, 108, 0.32);
 }
+.canvas-area::after {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  z-index: 9;
+  pointer-events: none;
+  border: 2px dashed transparent;
+  border-radius: 8px;
+  background: transparent;
+  transition: border-color 120ms, background 120ms;
+}
+body.file-drag-over .canvas-area::after {
+  border-color: var(--rose);
+  background: rgba(253, 249, 250, 0.62);
+}
 .grid-layer {
   position: absolute;
   inset: 0;
