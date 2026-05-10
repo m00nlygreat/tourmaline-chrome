@@ -1,0 +1,35 @@
+{
+  "name": "Tourmaline",
+  "short_name": "Tourmaline",
+  "description": "Markdown editor and visual canvas preview.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#fdf9fa",
+  "theme_color": "#fdf9fa",
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
+  "file_handlers": [
+    {
+      "action": ".",
+      "accept": {
+        "text/markdown": [".md", ".markdown"]
+      }
+    }
+  ],
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

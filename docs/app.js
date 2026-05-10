@@ -31813,6 +31813,10 @@ ${markdownRows.join("\n")}
     isAutoSaving: false,
     hasPendingAutoSave: false
   };
+  var pendingLaunch = {
+    fileHandle: null,
+    isInitializing: true
+  };
   var els = {
     workspace: document.querySelector(".workspace"),
     canvasArea: document.querySelector("#canvas-area"),
@@ -31900,9 +31904,11 @@ ${markdownRows.join("\n")}
   }
   async function init2() {
     bindEvents();
-    const loadedFromContentScript = await loadMarkdownFromContentScript();
-    const loadedFromUrl = loadedFromContentScript ? false : await loadMarkdownFromUrlParam();
-    if (!loadedFromContentScript && !loadedFromUrl) {
+    bindLaunchQueue();
+    const loadedFromLaunch = await loadMarkdownFromLaunchQueue();
+    const loadedFromContentScript = loadedFromLaunch ? false : await loadMarkdownFromContentScript();
+    const loadedFromUrl = loadedFromLaunch || loadedFromContentScript ? false : await loadMarkdownFromUrlParam();
+    if (!loadedFromLaunch && !loadedFromContentScript && !loadedFromUrl) {
       await loadPersistedSample();
     }
     await loadPersistedHandles();
@@ -31912,6 +31918,7 @@ ${markdownRows.join("\n")}
       fitInitialViewport();
       renderGrid();
     });
+    pendingLaunch.isInitializing = false;
   }
   function bindEvents() {
     document.querySelector("#open-file").addEventListener("click", openMarkdownFile);
@@ -31931,6 +31938,26 @@ ${markdownRows.join("\n")}
       normalizeViewportPresentation();
       scheduleGridRender();
     }).observe(els.canvasArea);
+  }
+  function bindLaunchQueue() {
+    if (!("launchQueue" in window)) return;
+    window.launchQueue.setConsumer((launchParams) => {
+      const [fileHandle] = launchParams.files || [];
+      if (!fileHandle) return;
+      if (pendingLaunch.isInitializing) {
+        pendingLaunch.fileHandle = fileHandle;
+        return;
+      }
+      loadFromFileHandle(fileHandle).catch((error2) => {
+        setStatus(`Could not open launched file: ${error2.message}`);
+      });
+    });
+  }
+  async function loadMarkdownFromLaunchQueue() {
+    if (!pendingLaunch.fileHandle) return false;
+    await loadFromFileHandle(pendingLaunch.fileHandle);
+    pendingLaunch.fileHandle = null;
+    return true;
   }
   async function loadPersistedSample() {
     const saved = await db.get("documents", state.documentKey);

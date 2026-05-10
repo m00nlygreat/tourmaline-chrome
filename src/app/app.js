@@ -182,6 +182,11 @@ const state = {
   hasPendingAutoSave: false
 };
 
+const pendingLaunch = {
+  fileHandle: null,
+  isInitializing: true
+};
+
 const els = {
   workspace: document.querySelector(".workspace"),
   canvasArea: document.querySelector("#canvas-area"),
@@ -272,9 +277,11 @@ if (els.workspace && els.stage && document.querySelector("#open-file")) {
 
 async function init() {
   bindEvents();
-  const loadedFromContentScript = await loadMarkdownFromContentScript();
-  const loadedFromUrl = loadedFromContentScript ? false : await loadMarkdownFromUrlParam();
-  if (!loadedFromContentScript && !loadedFromUrl) {
+  bindLaunchQueue();
+  const loadedFromLaunch = await loadMarkdownFromLaunchQueue();
+  const loadedFromContentScript = loadedFromLaunch ? false : await loadMarkdownFromContentScript();
+  const loadedFromUrl = loadedFromLaunch || loadedFromContentScript ? false : await loadMarkdownFromUrlParam();
+  if (!loadedFromLaunch && !loadedFromContentScript && !loadedFromUrl) {
     await loadPersistedSample();
   }
   await loadPersistedHandles();
@@ -284,6 +291,7 @@ async function init() {
     fitInitialViewport();
     renderGrid();
   });
+  pendingLaunch.isInitializing = false;
 }
 
 function bindEvents() {
@@ -304,6 +312,31 @@ function bindEvents() {
     normalizeViewportPresentation();
     scheduleGridRender();
   }).observe(els.canvasArea);
+}
+
+function bindLaunchQueue() {
+  if (!("launchQueue" in window)) return;
+
+  window.launchQueue.setConsumer((launchParams) => {
+    const [fileHandle] = launchParams.files || [];
+    if (!fileHandle) return;
+
+    if (pendingLaunch.isInitializing) {
+      pendingLaunch.fileHandle = fileHandle;
+      return;
+    }
+
+    loadFromFileHandle(fileHandle).catch((error) => {
+      setStatus(`Could not open launched file: ${error.message}`);
+    });
+  });
+}
+
+async function loadMarkdownFromLaunchQueue() {
+  if (!pendingLaunch.fileHandle) return false;
+  await loadFromFileHandle(pendingLaunch.fileHandle);
+  pendingLaunch.fileHandle = null;
+  return true;
 }
 
 async function loadPersistedSample() {
