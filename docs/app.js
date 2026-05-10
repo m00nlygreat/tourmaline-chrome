@@ -31815,7 +31815,8 @@ ${markdownRows.join("\n")}
   };
   var pendingLaunch = {
     fileHandle: null,
-    isInitializing: true
+    isInitializing: true,
+    resolveInitialFile: null
   };
   var els = {
     workspace: document.querySelector(".workspace"),
@@ -31946,6 +31947,7 @@ ${markdownRows.join("\n")}
       if (!fileHandle) return;
       if (pendingLaunch.isInitializing) {
         pendingLaunch.fileHandle = fileHandle;
+        pendingLaunch.resolveInitialFile?.(fileHandle);
         return;
       }
       loadFromFileHandle(fileHandle).catch((error2) => {
@@ -31954,10 +31956,28 @@ ${markdownRows.join("\n")}
     });
   }
   async function loadMarkdownFromLaunchQueue() {
-    if (!pendingLaunch.fileHandle) return false;
-    await loadFromFileHandle(pendingLaunch.fileHandle);
+    const fileHandle = pendingLaunch.fileHandle || await waitForInitialLaunchFile();
+    if (!fileHandle) return false;
     pendingLaunch.fileHandle = null;
+    pendingLaunch.resolveInitialFile = null;
+    await loadFromFileHandle(fileHandle);
     return true;
+  }
+  function waitForInitialLaunchFile() {
+    if (!("launchQueue" in window)) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        if (pendingLaunch.resolveInitialFile === resolveInitialFile) {
+          pendingLaunch.resolveInitialFile = null;
+        }
+        resolve(null);
+      }, 500);
+      function resolveInitialFile(fileHandle) {
+        clearTimeout(timeout);
+        resolve(fileHandle);
+      }
+      pendingLaunch.resolveInitialFile = resolveInitialFile;
+    });
   }
   async function loadPersistedSample() {
     const saved = await db.get("documents", state.documentKey);
