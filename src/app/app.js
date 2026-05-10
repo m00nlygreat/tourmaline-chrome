@@ -280,14 +280,16 @@ async function init() {
   bindEvents();
   bindLaunchQueue();
   const loadedFromLaunch = await loadMarkdownFromLaunchQueue();
-  const loadedFromContentScript = loadedFromLaunch ? false : await loadMarkdownFromContentScript();
-  const loadedFromUrl = loadedFromLaunch || loadedFromContentScript ? false : await loadMarkdownFromUrlParam();
-  if (!loadedFromLaunch && !loadedFromContentScript && !loadedFromUrl) {
-    await loadPersistedSample();
+  if (!loadedFromLaunch) {
+    const loadedFromContentScript = await loadMarkdownFromContentScript();
+    const loadedFromUrl = loadedFromContentScript ? false : await loadMarkdownFromUrlParam();
+    if (!loadedFromContentScript && !loadedFromUrl) {
+      await loadPersistedSample();
+    }
+    await loadPersistedHandles();
+    await loadLayout();
+    await reparseAndRender();
   }
-  await loadPersistedHandles();
-  await loadLayout();
-  await reparseAndRender();
   requestAnimationFrame(() => {
     fitInitialViewport();
     renderGrid();
