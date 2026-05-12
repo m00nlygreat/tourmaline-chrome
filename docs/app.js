@@ -32486,13 +32486,8 @@ ${markdownRows.join("\n")}
   function parseMarkdown(markdown) {
     const frontmatter = getFrontmatterInfo(markdown);
     const body = frontmatter.body;
-    const bodyLines = body.split(/\r?\n/);
     const allLines = markdown.split(/\r?\n/);
-    const headings = [];
-    bodyLines.forEach((line, index) => {
-      const match2 = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
-      if (match2) headings.push({ line: frontmatter.lineOffset + index, level: match2[1].length, title: match2[2].trim() });
-    });
+    const headings = collectMarkdownHeadings(body, frontmatter.lineOffset);
     const scopes = {};
     buildScope("scope:root", "Document", frontmatter.lineOffset, allLines.length - 1, null);
     if (!scopes[state.currentScopeId]) {
@@ -32500,10 +32495,13 @@ ${markdownRows.join("\n")}
       state.scopeStack = ["scope:root"];
     }
     const current = scopes[state.currentScopeId] ?? scopes["scope:root"];
-    return { title: current.title, scopes, items: current.items, tree: current.tree };
+    return { title: current.title, scopes, items: current.items, tree: current.tree, frontmatter };
     function buildScope(scopeId, title, startLine, endLine, openingHeading) {
       const scopeHeadings = headings.filter((heading2) => heading2.line >= startLine && heading2.line <= endLine);
       const items = [];
+      if (!openingHeading && scopeId === "scope:root" && frontmatter.exists) {
+        items.push(createFrontmatterItem(frontmatter));
+      }
       if (openingHeading) {
         items.push(createItem(`orphan:${scopeId}:scope-heading`, "orphan", openingHeading.title, openingHeading.line, openingHeading.line, allLines[openingHeading.line], openingHeading.level));
       }
@@ -32557,20 +32555,62 @@ ${markdownRows.join("\n")}
       return scopes[scopeId];
     }
   }
+  function collectMarkdownHeadings(markdown, lineOffset = 0) {
+    const tokens = markdownIt.parse(markdown, {});
+    return tokens.reduce((headings, token, index) => {
+      if (token.type !== "heading_open" || !token.map) return headings;
+      const level = Number(token.tag.slice(1));
+      const inline2 = tokens[index + 1];
+      const title = inline2?.type === "inline" ? inline2.content.trim() : "";
+      if (level >= 1 && level <= 6 && title) {
+        headings.push({ line: lineOffset + token.map[0], level, title });
+      }
+      return headings;
+    }, []);
+  }
   function getFrontmatterInfo(markdown) {
-    if (!markdown.startsWith("---")) return { body: markdown, lineOffset: 0 };
-    const end = markdown.indexOf("\n---", 3);
-    if (end === -1) return { body: markdown, lineOffset: 0 };
-    const bodyStart = markdown.indexOf("\n", end + 4) + 1;
+    const normalized = markdown.replace(/^\uFEFF/, "");
+    const lines = normalized.split(/\r?\n/);
+    const startLine = lines.findIndex((line) => line.trim());
+    const missing = {
+      exists: false,
+      startLine: null,
+      endLine: null,
+      raw: "",
+      content: "",
+      body: normalized,
+      lineOffset: 0
+    };
+    if (startLine === -1 || lines[startLine].trim() !== "---") return missing;
+    const endLine = lines.findIndex((line, index) => index > startLine && /^(---|\.\.\.)\s*$/.test(line));
+    if (endLine === -1) return missing;
     return {
-      body: markdown.slice(bodyStart),
-      lineOffset: markdown.slice(0, bodyStart).split(/\r?\n/).length - 1
+      exists: true,
+      startLine,
+      endLine,
+      raw: lines.slice(startLine, endLine + 1).join("\n"),
+      content: lines.slice(startLine + 1, endLine).join("\n"),
+      body: lines.slice(endLine + 1).join("\n"),
+      lineOffset: endLine + 1
     };
   }
   function createItem(id, kind, title, startLine, endLine, content, level) {
     const item = { id, kind, title, startLine, endLine, content, level, embeds: [] };
     item.embeds = extractEmbeds(content, startLine, id);
     return item;
+  }
+  function createFrontmatterItem(frontmatter) {
+    return {
+      id: "frontmatter:scope:root",
+      kind: "frontmatter",
+      title: "Properties",
+      startLine: frontmatter.startLine,
+      endLine: frontmatter.endLine,
+      content: frontmatter.content,
+      raw: frontmatter.raw,
+      level: 0,
+      embeds: []
+    };
   }
   function buildLayerTreeForItems(items, scopes) {
     return items.map((item) => {
@@ -32620,8 +32660,8 @@ ${markdownRows.join("\n")}
       defaults2[item.id] = {
         x: -620,
         y: -240 + index * 190,
-        width: DEFAULT_CARD_WIDTH,
-        height: 140
+        width: item.kind === "frontmatter" ? 420 : DEFAULT_CARD_WIDTH,
+        height: item.kind === "frontmatter" ? 180 : 140
       };
     });
     sectionItems.forEach((item, index) => {
@@ -32850,7 +32890,7 @@ ${markdownRows.join("\n")}
       }
     });
     row.dataset.layerNodeId = node.id;
-    row.draggable = node.kind !== "embed";
+    row.draggable = node.kind !== "embed" && node.kind !== "frontmatter";
     row.innerHTML = `
     <span class="layer-toggle">${hasChildren ? chevronSvg(isExpanded) : ""}</span>
     <span class="layer-glyph">${node.kind === "embed" ? embedSvg() : node.kind === "orphan" ? lineSvg() : cardSvg()}</span>
@@ -32904,7 +32944,7 @@ ${markdownRows.join("\n")}
   }
   function bindLayerReorder(row, node) {
     row.addEventListener("dragstart", (event) => {
-      if (node.kind === "embed") {
+      if (node.kind === "embed" || node.kind === "frontmatter") {
         event.preventDefault();
         return;
       }
@@ -32943,7 +32983,7 @@ ${markdownRows.join("\n")}
     if (!draggedId || !targetId || draggedId === targetId) return false;
     const dragged = state.parsed.items.find((item) => item.id === draggedId);
     const target = state.parsed.items.find((item) => item.id === targetId);
-    return Boolean(dragged && target);
+    return Boolean(dragged && target && dragged.kind !== "frontmatter" && target.kind !== "frontmatter");
   }
   function toggleExpandAllLayers() {
     const ids = getExpandableLayerNodeIds(state.parsed?.tree ?? []);
@@ -32987,20 +33027,26 @@ ${markdownRows.join("\n")}
     els.stage.replaceChildren();
     for (const item of state.parsed.items) {
       const el = document.createElement("article");
-      el.className = `${item.kind === "orphan" ? "orphan" : "card"} ${item.id === state.selectedId ? "selected" : ""} ${item.id === state.editingItemId ? "editing" : ""}`;
+      el.className = `${item.kind === "orphan" ? "orphan" : "card"} ${item.kind === "frontmatter" ? "frontmatter-card" : ""} ${item.id === state.selectedId ? "selected" : ""} ${item.id === state.editingItemId ? "editing" : ""}`;
       el.dataset.itemId = item.id;
       if (item.childScopeId) el.dataset.childScopeId = item.childScopeId;
       applyFrame(el, state.itemStates[item.id]);
       const body = document.createElement("div");
       body.className = item.kind === "orphan" ? "orphan-body" : "card-body";
-      const editor = document.createElement("div");
-      editor.className = "editable-card-body";
-      editor.dataset.itemId = item.id;
-      editor.setAttribute("aria-label", `Edit ${item.title}`);
-      if (item.kind === "orphan") {
-        body.append(span("orphan-label", item.title), editor);
+      if (item.kind === "frontmatter") {
+        body.append(renderFrontmatterCard(item));
       } else {
-        body.append(editor);
+        const editor = document.createElement("div");
+        editor.className = "editable-card-body";
+        editor.dataset.itemId = item.id;
+        editor.setAttribute("aria-label", `Edit ${item.title}`);
+        if (item.kind === "orphan") {
+          body.append(span("orphan-label", item.title), editor);
+        } else {
+          body.append(editor);
+        }
+        const content = await renderMarkdownHtml(item.content, item);
+        createCardEditor(editor, item, content);
       }
       el.append(createResizeHandle(item.id));
       el.append(body);
@@ -33026,11 +33072,61 @@ ${markdownRows.join("\n")}
         enterEditMode(item.id, event);
       });
       els.stage.append(el);
-      const content = await renderMarkdownHtml(item.content, item);
-      createCardEditor(editor, item, content);
     }
     setCardEditorsEditable();
     decorateEmbeds();
+  }
+  function renderFrontmatterCard(item) {
+    const fragment = document.createDocumentFragment();
+    const title = document.createElement("div");
+    title.className = "frontmatter-title";
+    title.textContent = item.title;
+    fragment.append(title);
+    const rows = parseFrontmatterRows(item.content);
+    if (!rows.length) {
+      const empty2 = document.createElement("div");
+      empty2.className = "frontmatter-empty";
+      empty2.textContent = "No properties";
+      fragment.append(empty2);
+      return fragment;
+    }
+    const table2 = document.createElement("table");
+    table2.className = "frontmatter-table";
+    const tbody = document.createElement("tbody");
+    rows.forEach((row) => {
+      const tr2 = document.createElement("tr");
+      const key = document.createElement("th");
+      const value = document.createElement("td");
+      key.textContent = row.key;
+      value.textContent = row.value;
+      tr2.append(key, value);
+      tbody.append(tr2);
+    });
+    table2.append(tbody);
+    fragment.append(table2);
+    return fragment;
+  }
+  function parseFrontmatterRows(content) {
+    const rows = [];
+    let current = null;
+    content.split(/\r?\n/).forEach((line) => {
+      if (!line.trim() || /^\s*#/.test(line)) return;
+      const keyMatch = /^([A-Za-z0-9_-][^:]*):\s*(.*)$/.exec(line);
+      if (keyMatch) {
+        current = { key: keyMatch[1].trim(), value: cleanFrontmatterValue(keyMatch[2]) };
+        rows.push(current);
+        return;
+      }
+      if (current && /^\s+/.test(line)) {
+        const nextValue = cleanFrontmatterValue(line.replace(/^\s*-\s*/, "").trim());
+        current.value = [current.value, nextValue].filter(Boolean).join(", ");
+      }
+    });
+    return rows;
+  }
+  function cleanFrontmatterValue(value) {
+    const trimmed = String(value ?? "").trim();
+    return trimmed.replace(/^['"]|['"]$/g, "");
   }
   async function renderMarkdownHtml(markdown, item) {
     const html = markdownIt.render(await replaceEmbeds(markdown, item));
@@ -33444,6 +33540,10 @@ ${html}
     }
     const item = state.parsed.items.find((candidate) => candidate.id === state.selectedId);
     if (!item) return;
+    if (item.kind === "frontmatter") {
+      setStatus("Frontmatter editing is not available yet.");
+      return;
+    }
     replaceLineRange(item.startLine, item.endLine, "");
     delete state.itemStates[item.id];
     state.selectedId = null;

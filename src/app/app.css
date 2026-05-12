@@ -270,6 +270,42 @@ body.file-drag-over .canvas-area::after {
 .card::before { content: ""; display: block; height: 3px; background: linear-gradient(90deg, var(--rose-light), var(--seafoam-light)); }
 .card.selected::before { background: var(--seafoam); }
 .card-body { padding: 14px 16px 16px; overflow-wrap: anywhere; }
+.frontmatter-card::before { background: var(--seafoam-light); }
+.frontmatter-title {
+  margin: 0 0 10px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 750;
+}
+.frontmatter-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.frontmatter-table th,
+.frontmatter-table td {
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: left;
+  vertical-align: top;
+}
+.frontmatter-table th {
+  width: 34%;
+  background: var(--seafoam-muted);
+  color: var(--text);
+  font-weight: 700;
+}
+.frontmatter-table td {
+  color: #6a5a5e;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.frontmatter-empty {
+  color: #8e7d82;
+  font-size: 12px;
+}
 .editable-card-body {
   cursor: grab;
   outline: 0;
