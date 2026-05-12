@@ -19,6 +19,11 @@ const GRID_DOT_RADIUS = 0.9;
 const MIN_GRID_SCREEN_SPACING = 14;
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp"]);
 const MARKDOWN_PICKER_ID = "tourmaline-markdown-file";
+const MERMAID_BLOCK_CLASS = "mermaid-diagram";
+const MERMAID_SCRIPT_SRC = "vendor/mermaid.min.js";
+let mermaidRenderCounter = 0;
+let mermaidLoadPromise = null;
+let hasInitializedMermaid = false;
 const SAMPLE_MARKDOWN = `# Tourmaline Chrome
 
 Tourmaline turns a Markdown document into movable cards on a browser canvas.
@@ -40,6 +45,12 @@ The Chrome version turns each canvas card into an editable writing surface.
 ![[diagram.png]]
 
 ![[Project notes.md#Roadmap]]
+
+\`\`\`mermaid
+flowchart LR
+  Markdown --> Cards
+  Cards --> Canvas
+\`\`\`
 
 ## Interaction
 
@@ -87,6 +98,31 @@ const EmbedPill = Node.create({
   }
 });
 
+const MermaidDiagram = Node.create({
+  name: "mermaidDiagram",
+  group: "block",
+  atom: true,
+  selectable: true,
+  addAttributes() {
+    return {
+      code: {
+        default: "",
+        parseHTML: (element) => element.getAttribute("data-mermaid-code") || "",
+        renderHTML: (attributes) => ({ "data-mermaid-code": attributes.code || "" })
+      }
+    };
+  },
+  parseHTML() {
+    return [{ tag: `div.${MERMAID_BLOCK_CLASS}` }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["div", mergeAttributes({ class: MERMAID_BLOCK_CLASS }, HTMLAttributes)];
+  },
+  addNodeView() {
+    return ({ node }) => createMermaidNodeView(node);
+  }
+});
+
 const editorExtensions = [
   StarterKit.configure({
     heading: { levels: [1, 2, 3, 4, 5, 6] },
@@ -104,7 +140,8 @@ const editorExtensions = [
   TableRow,
   TableHeader,
   TableCell,
-  EmbedPill
+  EmbedPill,
+  MermaidDiagram
 ];
 
 const markdownIt = new MarkdownIt({
@@ -112,6 +149,16 @@ const markdownIt = new MarkdownIt({
   linkify: true,
   breaks: false
 });
+
+const defaultFenceRenderer = markdownIt.renderer.rules.fence;
+
+markdownIt.renderer.rules.fence = (tokens, index, options, env, self) => {
+  const token = tokens[index];
+  if (env?.renderMermaidDiagrams && isMermaidFence(token.info)) {
+    return `<div class="${MERMAID_BLOCK_CLASS}" data-mermaid-code="${escapeAttribute(token.content)}"></div>`;
+  }
+  return defaultFenceRenderer ? defaultFenceRenderer(tokens, index, options, env, self) : self.renderToken(tokens, index, options);
+};
 
 const turndown = new TurndownService({
   codeBlockStyle: "fenced",
@@ -122,6 +169,14 @@ const turndown = new TurndownService({
 turndown.addRule("preserveEmbeds", {
   filter: (node) => node instanceof HTMLElement && node.hasAttribute("data-markdown"),
   replacement: (_content, node) => node.getAttribute("data-markdown") || ""
+});
+
+turndown.addRule("mermaidDiagrams", {
+  filter: (node) => node instanceof HTMLElement && node.classList.contains(MERMAID_BLOCK_CLASS) && node.hasAttribute("data-mermaid-code"),
+  replacement: (_content, node) => {
+    const code = node.getAttribute("data-mermaid-code") || "";
+    return `\n\n\`\`\`mermaid\n${code.replace(/\n$/, "")}\n\`\`\`\n\n`;
+  }
 });
 
 turndown.addRule("markdownTables", {
@@ -176,6 +231,7 @@ const state = {
   itemStates: {},
   localImageUrls: new Map(),
   cardEditors: new Map(),
+  editorSnapshots: new Map(),
   saveTimer: null,
   layoutSaveTimer: null,
   isAutoSaving: false,
@@ -1679,9 +1735,129 @@ function cleanFrontmatterValue(value) {
   return trimmed.replace(/^['"]|['"]$/g, "");
 }
 
-async function renderMarkdownHtml(markdown, item) {
-  const html = markdownIt.render(await replaceEmbeds(markdown, item));
+async function renderMarkdownHtml(markdown, item, options = {}) {
+  const renderMermaidDiagrams = options.renderMermaidDiagrams ?? item.id !== state.editingItemId;
+  const html = markdownIt.render(await replaceEmbeds(markdown, item), { renderMermaidDiagrams });
   return normalizeRenderedHeadingDepth(html, item);
+}
+
+function createMermaidNodeView(node) {
+  const dom = document.createElement("div");
+  dom.className = MERMAID_BLOCK_CLASS;
+  dom.setAttribute("contenteditable", "false");
+  let currentCode = "";
+  let renderVersion = 0;
+
+  const render = async (code) => {
+    currentCode = code || "";
+    const version = ++renderVersion;
+    renderMermaidPlaceholder(dom, currentCode);
+    try {
+      const mermaid = await getMermaid();
+      const { svg, bindFunctions } = await mermaid.render(`tourmaline-mermaid-${++mermaidRenderCounter}`, currentCode);
+      if (version !== renderVersion) return;
+      dom.className = MERMAID_BLOCK_CLASS;
+      dom.dataset.mermaidCode = currentCode;
+      dom.innerHTML = svg;
+      bindFunctions?.(dom);
+    } catch (error) {
+      if (version !== renderVersion) return;
+      renderMermaidError(dom, currentCode, error);
+    }
+  };
+
+  render(node.attrs.code);
+
+  return {
+    dom,
+    update(nextNode) {
+      if (nextNode.type.name !== node.type.name) return false;
+      const nextCode = nextNode.attrs.code || "";
+      if (nextCode !== currentCode) render(nextCode);
+      return true;
+    },
+    ignoreMutation() {
+      return true;
+    },
+    destroy() {
+      renderVersion += 1;
+    }
+  };
+}
+
+async function getMermaid() {
+  if (!globalThis.mermaid) await loadMermaidScript();
+  const mermaid = globalThis.mermaid;
+  if (!mermaid) throw new Error("Mermaid did not load.");
+  if (!hasInitializedMermaid) {
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: "strict",
+      theme: "base",
+      themeVariables: {
+        background: "#ffffff",
+        primaryColor: "#fdf9fa",
+        primaryTextColor: "#2e2428",
+        primaryBorderColor: "#e8e2e4",
+        secondaryColor: "#e8f6f4",
+        tertiaryColor: "#fff6f7",
+        lineColor: "#74686c",
+        fontFamily: "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+      }
+    });
+    hasInitializedMermaid = true;
+  }
+  return mermaid;
+}
+
+function loadMermaidScript() {
+  if (mermaidLoadPromise) return mermaidLoadPromise;
+  mermaidLoadPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[data-tourmaline-mermaid="true"]`);
+    if (existing) {
+      existing.addEventListener("load", resolve, { once: true });
+      existing.addEventListener("error", () => reject(new Error("Could not load Mermaid.")), { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = getMermaidScriptUrl();
+    script.async = true;
+    script.dataset.tourmalineMermaid = "true";
+    script.addEventListener("load", resolve, { once: true });
+    script.addEventListener("error", () => reject(new Error(`Could not load ${script.src}.`)), { once: true });
+    document.head.append(script);
+  });
+  return mermaidLoadPromise;
+}
+
+function getMermaidScriptUrl() {
+  if (location.protocol === "chrome-extension:" && globalThis.chrome?.runtime?.getURL) {
+    return chrome.runtime.getURL(MERMAID_SCRIPT_SRC);
+  }
+  const baseUrl = document.currentScript?.src || location.href;
+  return new URL(MERMAID_SCRIPT_SRC, baseUrl).href;
+}
+
+function renderMermaidPlaceholder(container, code) {
+  container.className = `${MERMAID_BLOCK_CLASS} is-rendering`;
+  container.dataset.mermaidCode = code;
+  container.textContent = "Rendering diagram...";
+}
+
+function renderMermaidError(container, code, error) {
+  container.className = `${MERMAID_BLOCK_CLASS} is-error`;
+  container.dataset.mermaidCode = code;
+  const title = document.createElement("div");
+  title.className = "mermaid-error-title";
+  title.textContent = "Diagram syntax error";
+  const details = document.createElement("pre");
+  details.textContent = getErrorMessage(error);
+  container.replaceChildren(title, details);
+}
+
+function getErrorMessage(error) {
+  return error?.str || error?.message || String(error);
 }
 
 async function replaceEmbeds(markdown, item) {
@@ -1785,19 +1961,41 @@ function createCardEditor(element, item, content) {
   state.cardEditors.set(item.id, editor);
 }
 
+async function refreshCardEditorContent(editor, item, options = {}) {
+  const content = await renderMarkdownHtml(item.content, item, options);
+  editor.commands.setContent(content, { emitUpdate: false });
+}
+
+function rememberEditorSnapshot(itemId, editor) {
+  state.editorSnapshots.set(itemId, serializeEditorDocument(editor));
+}
+
+function serializeEditorDocument(editor) {
+  try {
+    return JSON.stringify(editor.getJSON());
+  } catch {
+    return typeof editor.getHTML === "function" ? editor.getHTML() : "";
+  }
+}
+
 function destroyCardEditors() {
   for (const editor of state.cardEditors.values()) {
     editor.destroy();
   }
   state.cardEditors.clear();
+  state.editorSnapshots.clear();
 }
 
-function enterEditMode(itemId, event = null) {
+async function enterEditMode(itemId, event = null) {
   const editor = state.cardEditors.get(itemId);
-  if (!editor) return;
+  const item = state.parsed?.items.find((candidate) => candidate.id === itemId);
+  if (!editor || !item) return;
   state.editingItemId = itemId;
-  setCardEditorsEditable();
   selectItem(itemId);
+  await refreshCardEditorContent(editor, item, { renderMermaidDiagrams: false });
+  if (state.editingItemId !== itemId) return;
+  rememberEditorSnapshot(itemId, editor);
+  setCardEditorsEditable();
   focusEditorAtEvent(editor, event);
   updateCanvasSelection();
 }
@@ -1807,12 +2005,17 @@ function exitEditMode(options = {}) {
   const itemId = state.editingItemId;
   const editor = state.cardEditors.get(itemId);
   const item = state.parsed?.items.find((candidate) => candidate.id === itemId);
+  const shouldReparse = options.reparse ?? true;
   state.editingItemId = null;
+  let changed = false;
   if (editor && item) {
-    updateItemMarkdownFromEditor(editor, item, { reparse: options.reparse ?? true });
+    changed = updateItemMarkdownFromEditor(editor, item, { reparse: shouldReparse });
   }
   setCardEditorsEditable();
   updateCanvasSelection();
+  if (editor && item && (!shouldReparse || !changed)) {
+    refreshCardEditorContent(editor, item, { renderMermaidDiagrams: true });
+  }
 }
 
 function setCardEditorsEditable() {
@@ -1822,13 +2025,18 @@ function setCardEditorsEditable() {
 }
 
 function updateItemMarkdownFromEditor(editor, item, options = {}) {
+  const editorSnapshot = serializeEditorDocument(editor);
+  if (state.editorSnapshots.get(item.id) === editorSnapshot) return false;
   const html = typeof editor.getHTML === "function" ? editor.getHTML() : editor.innerHTML;
   const relativeMarkdown = turndown.turndown(html).trim();
   const nextMarkdown = denormalizeMarkdownHeadingDepth(relativeMarkdown, item);
-  replaceItemMarkdown(item, nextMarkdown, options);
+  const changed = replaceItemMarkdown(item, nextMarkdown, options);
+  state.editorSnapshots.set(item.id, editorSnapshot);
+  return changed;
 }
 
 function replaceItemMarkdown(item, replacement, options = {}) {
+  if (replacement === item.content) return false;
   const lines = state.markdown.split(/\r?\n/);
   const replacementLines = replacement ? replacement.split(/\r?\n/) : [];
   const nextLines = [
@@ -1844,6 +2052,7 @@ function replaceItemMarkdown(item, replacement, options = {}) {
   if (options.reparse) {
     reparseAndRender();
   }
+  return true;
 }
 
 function normalizeRenderedHeadingDepth(html, item) {
@@ -2521,6 +2730,11 @@ function isImageTarget(target) {
   const clean = target.split("#")[0].split("?")[0];
   const ext = clean.includes(".") ? clean.split(".").pop().toLowerCase() : "";
   return IMAGE_EXTENSIONS.has(ext) || /^(https?:|data:)/i.test(target);
+}
+
+function isMermaidFence(info) {
+  const language = String(info || "").trim().split(/\s+/)[0].toLowerCase();
+  return language === "mermaid" || language === "mmd";
 }
 
 function escapeHtml(value) {

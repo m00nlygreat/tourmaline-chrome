@@ -356,6 +356,37 @@ body.file-drag-over .canvas-area::after {
   border: 1px solid var(--border);
   margin: 8px 0;
 }
+.mermaid-diagram {
+  margin: 8px 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  overflow: auto;
+  color: var(--text);
+}
+.mermaid-diagram svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+.mermaid-diagram.is-rendering,
+.mermaid-diagram.is-error {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.mermaid-error-title {
+  margin-bottom: 6px;
+  color: #8e4f59;
+  font-weight: 750;
+}
+.mermaid-diagram.is-error pre {
+  margin: 0;
+  white-space: pre-wrap;
+  color: #6a5a5e;
+}
 .embed-pill {
   display: inline-flex;
   max-width: 100%;

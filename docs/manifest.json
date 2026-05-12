@@ -39,7 +39,7 @@
         "https://*/*.markdown"
       ],
       "css": ["app.css"],
-      "js": ["content-bootstrap.js", "app.js"],
+      "js": ["content-bootstrap.js", "vendor/mermaid.min.js", "app.js"],
       "run_at": "document_idle"
     }
   ]
