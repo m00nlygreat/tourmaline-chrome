@@ -32583,7 +32583,7 @@ ${markdownRows.join("\n")}
       const minLevel = Math.min(...scopeHeadings.map((heading2) => heading2.level));
       const shellHeadings = scopeHeadings.filter((heading2) => heading2.level === minLevel);
       const firstShell = shellHeadings[0];
-      if (!openingHeading && firstShell.line > startLine) {
+      if (firstShell.line > startLine) {
         const prefix = allLines.slice(startLine, firstShell.line).join("\n").trim();
         if (prefix) items.push(createItem(`orphan:${scopeId}:prefix`, "orphan", "Intro", startLine, firstShell.line - 1, prefix, 1));
       }

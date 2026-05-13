@@ -1036,7 +1036,7 @@ function parseMarkdown(markdown) {
     const minLevel = Math.min(...scopeHeadings.map((heading) => heading.level));
     const shellHeadings = scopeHeadings.filter((heading) => heading.level === minLevel);
     const firstShell = shellHeadings[0];
-    if (!openingHeading && firstShell.line > startLine) {
+    if (firstShell.line > startLine) {
       const prefix = allLines.slice(startLine, firstShell.line).join("\n").trim();
       if (prefix) items.push(createItem(`orphan:${scopeId}:prefix`, "orphan", "Intro", startLine, firstShell.line - 1, prefix, 1));
     }
